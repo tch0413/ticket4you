@@ -1,0 +1,6 @@
+/storage/app.key
+/storage/email_outbox/*
+!/storage/email_outbox/.gitkeep
+.env
+*.log
+*.sql.gz

@@ -1,0 +1,20 @@
+TICKETS4YOU — FLOOR DIRECTORY MODAL + ESTIMATED VENUE CAPACITIES
+
+This is the recommended upgrade for your existing installation.
+
+1. Back up C:\xampp\htdocs\T4Y (especially storage/app.key and your config files).
+2. Extract the upgrade ZIP INTO C:\xampp\htdocs\T4Y and replace matching files.
+   The zip entries start with shared/, assets/, tests/, docs/; do NOT create
+   a second nested T4Y folder.
+3. Keep the existing database t4y_chatgpt_db and account records unchanged.
+4. Run: cd C:\xampp\htdocs\T4Y
+   C:\xampp\php\php.exe tests\venue_modal_smoke.php
+   C:\xampp\php\php.exe tests\venue_gallery_smoke.php
+5. Visit: http://localhost/T4Y/index.php?page=floor
+   Ctrl+F5 to load the new assets.
+6. Click any venue card to open its photo/details in a scrollable overlay.
+   Use Close or Back to floor directory to return without a new page.
+
+No SQL migration is required. Estimated guest ranges are planning-only and
+must never be used as approved occupancy or ticket-sale capacity.
+Promenade has no numerical estimate. Images exist for ten Level 2 spaces.

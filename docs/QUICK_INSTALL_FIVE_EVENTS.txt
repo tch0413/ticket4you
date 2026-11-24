@@ -1,0 +1,25 @@
+TICKETS4YOU — FIVE DEMO EVENTS + CUSTOMER UX UPDATE
+
+1. Back up C:\xampp\htdocs\T4Y and the working MySQL database.
+2. Extract upgrade ZIP directly to C:\xampp\htdocs\T4Y, replacing same-named files.
+   Do not extract into an extra T4Y folder.
+3. Keep your current storage/app.key, config.php, app/core.php and database.
+4. Start Apache and MySQL in XAMPP.
+5. Open PowerShell and run:
+
+   cd C:\xampp\htdocs\T4Y
+   C:\xampp\php\php.exe scripts\demo_five_events.php
+   C:\xampp\php\php.exe tests\event_expansion_smoke.php
+   C:\xampp\php\php.exe tests\event_details_smoke.php
+   C:\xampp\php\php.exe tests\customer_portal_smoke.php
+   C:\xampp\php\php.exe tests\mysql_smoke.php
+
+6. Visit http://localhost/T4Y/index.php?page=dashboard using a Customer login.
+   Press Ctrl+F5 to load the new CSS.
+
+IMPORTANT: No database reinstall or migration is needed. Demo venue capacities
+created for previously unconfigured SICC spaces are FICTIONAL/UNVERIFIED,
+explicitly marked as such, and must NOT be used for real SICC bookings.
+The seeder skips events it already created on subsequent runs.
+
+Full details: docs/FIVE_EVENTS_CUSTOMER_UX_UPGRADE.md
