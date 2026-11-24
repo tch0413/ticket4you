@@ -31,7 +31,7 @@ foreach ($map as $name => $file) {
 
 verifyVenueGallery(siccVenueImage('Kinabatangan I',3)===null, 'Level 2 image never assigned to wrong floor');
 ob_start(); floorDirectoryView(); $html=(string)ob_get_clean();
-verifyVenueGallery(substr_count($html,'class="room-tile-photo"')===22, 'Visitor directory renders twenty-two venue images');
+verifyVenueGallery(substr_count($html,'class="room-tile-photo"')===25, 'Visitor directory renders twenty-five venue images');
 verifyVenueGallery(substr_count($html,'data-room-name=')===40, 'All forty directory rooms remain visible');
-verifyVenueGallery(substr_count($html,'loading="lazy"')===22, 'Venue pictures use lazy loading');
+verifyVenueGallery(substr_count($html,'loading="lazy"')===25, 'Venue pictures use lazy loading');
 verifyVenueGallery(!str_contains($html,'AI-generated'), 'No visible image labels added');

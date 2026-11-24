@@ -29,6 +29,19 @@ function siccFloorDirectory(): array {
 }
 /** Image assets match the named venue entries. Other rooms remain without an image until available. */
 function siccVenueImage(string $name, int $level): ?string {
+    // Level 4 venue images
+    if ($level === 4) {
+        $images = [
+            'Sipadan Foyer' => 'sipadan-foyer.webp',
+            'Sipadan I-III' => 'sipadan-i-iii.webp',
+            'PAH Foyer' => 'pah-foyer.webp',
+        ];
+
+        return isset($images[$name])
+            ? 'assets/venues/' . $images[$name]
+            : null;
+    }
+
     // Level 3 SICC venue illustrations. Level 2 mappings below remain unchanged.
     if ($level === 3) {
         $images = [
@@ -45,22 +58,23 @@ function siccVenueImage(string $name, int $level): ?string {
         ];
         return isset($images[$name]) ? 'assets/venues/' . $images[$name] : null;
     }
- if ($level !== 2) return null;
- $images = [
-  'Kinabatangan Foyer' => 'kinabatangan-foyer.webp',
-  'Kinabatangan I' => 'kinabatangan-i.webp',
-  'Kinabatangan II' => 'kinabatangan-ii.webp',
-  'Kinabatangan III' => 'kinabatangan-iii.webp',
-  'Business Centre' => 'business-centre.webp',
-  'Kapalai & Manukan' => 'kapalai-manukan.webp',
-  'Mabul' => 'mabul.webp',
-  'Mataking' => 'mataking.webp',
-  'Balambangan' => 'balambangan.webp',
-  'Silam Lounge (VVIP Lounge)' => 'silam-lounge.webp',
-  'Silam Foyer' => 'silam-foyer.png',
-  'Promenade' => 'promenade.png',
- ];
- return isset($images[$name]) ? 'assets/venues/'.$images[$name] : null;
+    
+    if ($level !== 2) return null;
+    $images = [
+        'Kinabatangan Foyer' => 'kinabatangan-foyer.webp',
+        'Kinabatangan I' => 'kinabatangan-i.webp',
+        'Kinabatangan II' => 'kinabatangan-ii.webp',
+        'Kinabatangan III' => 'kinabatangan-iii.webp',
+        'Business Centre' => 'business-centre.webp',
+        'Kapalai & Manukan' => 'kapalai-manukan.webp',
+        'Mabul' => 'mabul.webp',
+        'Mataking' => 'mataking.webp',
+        'Balambangan' => 'balambangan.webp',
+        'Silam Lounge (VVIP Lounge)' => 'silam-lounge.webp',
+        'Silam Foyer' => 'silam-foyer.png',
+        'Promenade' => 'promenade.png',
+    ];
+    return isset($images[$name]) ? 'assets/venues/'.$images[$name] : null;
 }
 /**
  * Provisional planning ranges for the student demo UI, NOT official or certified
