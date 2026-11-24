@@ -20,17 +20,18 @@ $map = [
  'Mataking' => 'mataking.webp',
  'Balambangan' => 'balambangan.webp',
  'Silam Lounge (VVIP Lounge)' => 'silam-lounge.webp',
+ 'Silam Foyer' => 'silam-foyer.png',
+ 'Promenade' => 'promenade.png',
 ];
 foreach ($map as $name => $file) {
  $uri = siccVenueImage($name, 2);
  verifyVenueGallery($uri==='assets/venues/'.$file, 'Correct image mapped to '.$name);
  verifyVenueGallery(is_file(dirname(__DIR__).'/'.$uri), 'Image file exists: '.$file);
 }
-verifyVenueGallery(siccVenueImage('Silam Foyer',2)===null, 'No incorrect image assigned to Silam Foyer');
-verifyVenueGallery(siccVenueImage('Promenade',2)===null, 'No incorrect image assigned to Promenade');
+
 verifyVenueGallery(siccVenueImage('Kinabatangan I',3)===null, 'Level 2 image never assigned to wrong floor');
 ob_start(); floorDirectoryView(); $html=(string)ob_get_clean();
-verifyVenueGallery(substr_count($html,'class="room-tile-photo"')===10, 'Visitor directory renders ten venue images');
+verifyVenueGallery(substr_count($html,'class="room-tile-photo"')===12, 'Visitor directory renders twelve venue images');
 verifyVenueGallery(substr_count($html,'data-room-name=')===40, 'All forty directory rooms remain visible');
-verifyVenueGallery(substr_count($html,'loading="lazy"')===10, 'Venue pictures use lazy loading');
+verifyVenueGallery(substr_count($html,'loading="lazy"')===12, 'Venue pictures use lazy loading');
 verifyVenueGallery(!str_contains($html,'AI-generated'), 'No visible image labels added');
