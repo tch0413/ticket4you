@@ -17,7 +17,9 @@ function siccFloorDirectory(): array {
    'Imbak Lounge (VIP Lounge)','Imbak II (VVIP Room)','VIP/Imbak Foyer',
    'Lobby','Meranti Cafe','Porte Cochere','Sayat-Sayat',
   ],
-  4=>['Sipadan Foyer','Sipadan I-III','PAH Foyer'],
+  4=>[
+    'Sipadan Foyer','Sipadan I-III','PAH Foyer'
+    ],
   5=>[
    'Kadamaian','Mesilau','Dinawan','Madai','Sepilok','Selingan',
    'Monsopiad','Klias','Mantanani','Rafflesia','Kianbalu I',
@@ -39,6 +41,8 @@ function siccVenueImage(string $name, int $level): ?string {
   'Mataking' => 'mataking.webp',
   'Balambangan' => 'balambangan.webp',
   'Silam Lounge (VVIP Lounge)' => 'silam-lounge.webp',
+  'Silam Foyer' => 'silam-foyer.png',
+  'Promenade' => 'promenade.png',
  ];
  return isset($images[$name]) ? 'assets/venues/'.$images[$name] : null;
 }
