@@ -30,6 +30,6 @@ foreach ($images as $name => $file) {
 checkL3(siccVenueImage('Jesselton Square (Open Plaza)', 2) === null, 'Level 3 image not assigned to Level 2');
 checkL3(siccVenueImage('Kinabatangan Foyer', 2) !== null, 'Existing Level 2 image preserved');
 ob_start(); floorDirectoryView(); $html = (string) ob_get_clean();
-checkL3(substr_count($html, 'class="room-tile-photo"') === 22, '22 venue pictures now render across Levels 2 and 3');
+checkL3(substr_count($html, 'class="room-tile-photo"') === 25, '25 venue pictures now render across Levels 2,3 and 4');
 checkL3(substr_count($html, 'data-room-name=') === 40, 'All 40 rooms remain in directory');
 checkL3(str_contains($html, 'modal-dialog-scrollable'), 'Existing same-page scrollable modal retained');
