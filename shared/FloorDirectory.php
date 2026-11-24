@@ -29,6 +29,22 @@ function siccFloorDirectory(): array {
 }
 /** Image assets match the named venue entries. Other rooms remain without an image until available. */
 function siccVenueImage(string $name, int $level): ?string {
+    // Level 3 SICC venue illustrations. Level 2 mappings below remain unchanged.
+    if ($level === 3) {
+        $images = [
+            'Jesselton Square (Open Plaza)' => 'jesselton-square.webp',
+            'Danum (VVIP Room)' => 'danum.webp',
+            'Imbak I (VVIP Room)' => 'imbak-i.webp',
+            'Imbak Lounge (VIP Lounge)' => 'imbak-lounge.webp',
+            'Imbak II (VVIP Room)' => 'imbak-ii.webp',
+            'VIP/Imbak Foyer' => 'vip-imbak-foyer.webp',
+            'Lobby' => 'lobby.webp',
+            'Meranti Cafe' => 'meranti-cafe.webp',
+            'Porte Cochere' => 'porte-cochere.webp',
+            'Sayat-Sayat' => 'sayat-sayat.webp',
+        ];
+        return isset($images[$name]) ? 'assets/venues/' . $images[$name] : null;
+    }
  if ($level !== 2) return null;
  $images = [
   'Kinabatangan Foyer' => 'kinabatangan-foyer.webp',
