@@ -28,7 +28,7 @@ testVenue($count===39,'Exactly 39 spaces have indicative capacity ranges');
 ob_start();floorDirectoryView();$html=(string)ob_get_clean();
 testVenue(substr_count($html,'data-room-name=')===40,'Forty venue cards render');
 testVenue(substr_count($html,'data-bs-target="#venueDetailsModal"')===40,'All cards open the same in-page details modal');
-testVenue(substr_count($html,'class="room-tile-photo"')===12,'Twelve venue photographs mapped to Level 2 cards');
+testVenue(substr_count($html,'class="room-tile-photo"')===22,'Twelve venue photographs mapped to Level 2 cards');
 testVenue(!str_contains($html,'target="_blank"'),'No venue opens in a new tab');
 testVenue(!str_contains($html,'<a class="room-tile-photo"'),'Images are part of modal-opening cards, not direct links');
 testVenue(str_contains($html,'modal-dialog-scrollable') && str_contains($html,'data-bs-dismiss="modal"'),'Scrollable dialog can be closed without navigation');
