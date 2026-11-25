@@ -30,6 +30,35 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
  requested_email VARCHAR(255) NULL, expires_at DATETIME NOT NULL, used_at DATETIME NULL,
  FOREIGN KEY (user_id) REFERENCES users(id), INDEX(user_id,purpose)
 ) ENGINE=InnoDB;
+-- UAM Phase 1: protects every role login against repeated password guesses.
+CREATE TABLE IF NOT EXISTS auth_login_attempts (
+ subject_key CHAR(64) PRIMARY KEY,
+ failures INT UNSIGNED NOT NULL DEFAULT 0,
+ window_started_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ blocked_until DATETIME NULL,
+ INDEX (blocked_until)
+) ENGINE=InnoDB;
+
+-- UAM Phase 2: short-lived, single-use password-change email OTP.
+CREATE TABLE IF NOT EXISTS account_password_otps (
+ user_id BIGINT UNSIGNED PRIMARY KEY,
+ otp_hash CHAR(64) NOT NULL,
+ attempts TINYINT UNSIGNED NOT NULL DEFAULT 0,
+ sent_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ expires_at DATETIME NOT NULL,
+ used_at DATETIME NULL,
+ FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB;
+-- Optional, consent-based analytics profile. Not required for booking or account access.
+CREATE TABLE IF NOT EXISTS customer_research_profiles (
+ user_id BIGINT UNSIGNED PRIMARY KEY,
+ age_band VARCHAR(16) NULL, gender VARCHAR(32) NULL, region VARCHAR(64) NULL,
+ occupation VARCHAR(64) NULL, interests_json TEXT NULL,
+ analytics_consent TINYINT(1) NOT NULL DEFAULT 0,
+ updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS audit_logs (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, actor_id BIGINT UNSIGNED NULL,
  action VARCHAR(100) NOT NULL, entity VARCHAR(80) NOT NULL, entity_id BIGINT UNSIGNED NULL,

@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__ . '/login_security.php';
 function sessionInit(): void {
  if(session_status()!==PHP_SESSION_NONE)return;
  ini_set('session.use_strict_mode','1');ini_set('session.use_only_cookies','1');
@@ -61,15 +62,22 @@ function completeLogin(array $u): void {
 function loginWithPassword(string $login,string $password,string $portal): void {
  must(in_array($portal,['customer','organiser','staff','admin'],true),'Choose a valid sign-in portal.');
  // Email addresses are case-insensitive; issued Staff IDs retain their exact form.
- if($portal!=='staff')$login=strtolower($login);
+ if($portal!=='staff')$login=strtolower(trim($login));
+ else $login=trim($login);
+ loginThrottleCheck($login,$portal);
  $u=one('SELECT * FROM users WHERE email=? OR staff_id=?',[$login,$login]);
- if(!$u||$u['status']!=='active'||!password_verify($password,$u['password_hash']))
+ if(!$u||$u['status']!=='active'||!password_verify($password,$u['password_hash'])){
+  loginThrottleFailure($login,$portal);
   throw new DomainException('Invalid credentials or account type.');
+ }
  $roles=array_column(all('SELECT role FROM user_roles WHERE user_id=?',[$u['id']]),'role');
  // Staff sign in with Staff ID. Customer, Organiser and Admin use personal email.
  $expected=$portal==='staff'?(string)($u['staff_id']??''):(string)$u['email'];
- if(!in_array($portal,$roles,true)||$expected===''||!hash_equals($expected,$login))
+ if(!in_array($portal,$roles,true)||$expected===''||!hash_equals($expected,$login)){
+  loginThrottleFailure($login,$portal);
   throw new DomainException('Invalid credentials or account type.');
+ }
+ loginThrottleSuccess($login,$portal);
  $factor=one("SELECT id FROM mfa_factors WHERE user_id=? AND status='active'",[$u['id']]);
  if($factor){
   session_regenerate_id(true);

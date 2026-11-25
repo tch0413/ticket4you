@@ -33,9 +33,5 @@ try {
   q('INSERT INTO refund_policy_versions(name,template_id,version_no,fee_refundable,created_by) VALUES(?,?,?,?,?)',['Default ordinary refund policy',$tpl,1,0,$id]);
   $policy=(int)$pdo->lastInsertId();foreach([0=>0,8=>25,16=>50,31=>100] as $days=>$percent)q('INSERT INTO refund_tiers(policy_id,minimum_seconds,percentage) VALUES(?,?,?)',[$policy,$days*86400,$percent]);
  }
- if(!(int)scalar('SELECT COUNT(*) FROM venues')){
-  q("INSERT INTO venues(code,name,level_no,capacity,facilities) VALUES('DEMO-HALL','SICC Demonstration Hall (fictional capacity)',4,300,'Demonstration only; validate real SICC capacities before deployment')");
-  q("INSERT INTO venues(code,name,level_no,capacity,facilities) VALUES('DEMO-ROOM','SICC Demo Meeting Room (fictional capacity)',5,80,'Demonstration only')");
- }
  echo "Database installed. Admin email: $adminEmail\nAdmin password was not printed. Run scripts/demo_seed.php if you want fictional upcoming events.\n";
 } catch(Throwable $e){fwrite(STDERR,"Install failed: ".$e->getMessage()."\n");exit(1);}
