@@ -30,8 +30,8 @@ testVenue(substr_count($html,'data-room-name=')===40,'Forty venue cards render')
 testVenue(substr_count($html,'data-bs-target="#venueDetailsModal"')===40,'All cards open the same in-page details modal');
 
 testVenue(
-    substr_count($html, 'class="room-tile-photo"') === 25,
-    'Twenty-five venue photographs mapped across Levels 2, 3 and 4'
+    substr_count($html, 'class="room-tile-photo"') === 40,
+    'Forty venue photographs mapped across Levels 2, 3, 4 and 5'
 );
 
 testVenue(!str_contains($html,'target="_blank"'),'No venue opens in a new tab');
