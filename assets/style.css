@@ -227,3 +227,41 @@ a{color:#254d6d}a:hover{color:#142f4c}button,a,input,select,textarea{touch-actio
 .analytics-zoom-plot[aria-busy="true"]{opacity:.66}
 .analytics-zoom-feedback{min-height:1.3rem;color:#59738d;font-size:.77rem;margin:-.5rem 0 1.2rem}
 @media(max-width:600px){.analytics-zoom-toolbar{align-items:start}.analytics-zoom-buttons .btn{font-size:.77rem}}
+
+
+/* UAM Phase 2: concise, accessible profile and event-application controls. */
+.uam-account-intro{margin-bottom:18px;padding:18px 20px;border-radius:14px;background:#eff4f8;border:1px solid #dbe6ef}
+.uam-account-intro p{margin:0 0 5px;overflow-wrap:anywhere}.uam-account-intro p:last-child{margin-bottom:0}
+.uam-optional-section{margin:22px 0;padding:20px;border-radius:14px;background:#f6f8fa;border:1px solid #e2e8ef}
+.uam-optional-section h3{font-size:1.05rem;color:#173451;font-weight:800;margin-bottom:8px}
+.uam-interests .form-check-label{white-space:nowrap;font-size:.86rem}
+.user-menu .dropdown-menu{min-width:242px;max-height:70vh;overflow-y:auto}
+.user-menu .dropdown-header{padding:12px 15px;white-space:normal;max-width:260px;overflow-wrap:anywhere;font-weight:750}
+@media(hover:hover) and (pointer:fine) and (min-width:992px){.user-menu .dropdown-menu{margin-top:0;top:100%}}
+.application-date-button{display:flex;align-items:center;justify-content:space-between;text-align:left;min-height:46px;background:#fff;color:#1b344c;border:1px solid #d2dee9;padding:11px 14px}
+.application-date-button:focus-visible,.application-venue-card:focus-within{outline:2px solid #ae8649;outline-offset:2px}
+.application-venue-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px}
+.application-venue-card{overflow:hidden;border:1px solid #dde5ec;border-radius:14px;background:white;box-shadow:0 7px 22px rgba(20,40,60,.045)}
+.application-venue-card:has(input:checked){border-color:#ba945b;box-shadow:0 0 0 2px rgba(186,148,91,.14)}
+.application-venue-photo{height:150px;background:linear-gradient(120deg,#19354b,#2c5065)}
+.application-venue-photo img{height:100%;width:100%;object-fit:cover;display:block}
+.application-venue-placeholder{height:100%;display:grid;place-items:center;font-weight:800;color:#fff;letter-spacing:.08em}
+.application-venue-details{padding:15px;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+.application-venue-details label{cursor:pointer;font-size:.88rem;min-height:42px}
+.application-venue-details .small,.application-venue-details small{line-height:1.5}
+.application-venue-modal-body{max-height:65vh;overflow-y:auto;overscroll-behavior:contain}
+.application-venue-modal-image{background:#eff3f7;border-radius:12px;overflow:hidden;margin-bottom:19px;text-align:center}
+.application-venue-modal-image img{width:100%;max-height:360px;object-fit:cover;display:block}
+.application-venue-modal-image p{padding:25px;margin:0}
+.application-staff-choice{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid #dde5ed;padding:14px;border-radius:12px;background:white}
+.application-staff-choice .form-check-label{font-size:.85rem;font-weight:700;cursor:pointer}
+.application-staff-choice .form-control{width:90px;min-height:40px}
+.application-staff-choice .small{display:block;margin-bottom:3px;color:#62778d;font-size:.7rem}
+@media(max-width:700px){.application-venue-grid{grid-template-columns:1fr}.application-staff-choice{align-items:flex-start}}
+
+.uam-account-tabs{gap:8px;flex-wrap:wrap;border-bottom:1px solid #dce4ec;padding-bottom:14px}
+.uam-account-tabs .nav-link{border:1px solid #dce4ec;background:white;color:#324d67;font-weight:750;padding:10px 16px;border-radius:10px;font-size:.86rem}
+.uam-account-tabs .nav-link:hover{background:#ecf2f7;color:#152e47}
+.uam-account-tabs .nav-link.active{background:#19344e;border-color:#19344e;color:white}
+.uam-account-tabs~.tab-content .card{box-shadow:0 8px 22px rgba(18,36,57,.05)!important}
+@media(max-width:600px){.uam-account-tabs{display:grid;grid-template-columns:1fr 1fr}.uam-account-tabs .nav-link{font-size:.77rem;padding:11px 9px;text-align:center}}

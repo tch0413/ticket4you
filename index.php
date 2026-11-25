@@ -6,6 +6,7 @@ require_once __DIR__.'/app/domain.php';
 require_once __DIR__.'/app/i18n.php';
 require_once __DIR__.'/app/layout.php';
 require_once __DIR__.'/app/login_ui.php';
+require_once __DIR__.'/app/uam_phase2.php';
 require_once __DIR__.'/modules/UserAccount.php';
 require_once __DIR__.'/modules/Venue.php';
 require_once __DIR__.'/shared/FloorDirectory.php';

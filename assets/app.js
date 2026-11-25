@@ -283,3 +283,76 @@ document.querySelectorAll('[data-analytics-zoom]').forEach(root => {
   });
   updateLabel();
 });
+
+
+// Customer profile dropdown: hover on desktop, click/tap and keyboard through Bootstrap.
+document.querySelectorAll('[data-hover-account-menu]').forEach(root=>{
+ const trigger=root.querySelector('[data-bs-toggle="dropdown"]');
+ if(!trigger||!window.bootstrap?.Dropdown)return;
+ const menu=window.bootstrap.Dropdown.getOrCreateInstance(trigger);
+ const capable=()=>window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 992px)').matches;
+ root.addEventListener('mouseenter',()=>{if(capable())menu.show();});
+ root.addEventListener('mouseleave',()=>{if(capable())menu.hide();});
+});
+
+// Explicit Clear, Cancel/X and Confirm date-time workflow; no native browser picker chrome changes.
+const applicationDateModal=document.getElementById('applicationDateModal');
+if(applicationDateModal){
+ let target=null;
+ const dateInput=document.getElementById('applicationDateValue');
+ const timeInput=document.getElementById('applicationTimeValue');
+ const confirm=applicationDateModal.querySelector('[data-date-confirm]');
+ const clear=applicationDateModal.querySelector('[data-date-clear]');
+ const buttonLabel=()=>document.querySelector(`[data-date-field="${target?.id||''}"] [data-date-label]`);
+ const applyValue=value=>{
+  if(!target)return;
+  target.value=value;
+  const label=buttonLabel();if(label)label.textContent=value?value.replace('T',' at '):(document.querySelector(`[data-date-field="${target?.id||''}"]`)?.dataset.datePlaceholder||'Choose date and time');
+  window.bootstrap.Modal.getOrCreateInstance(applicationDateModal).hide();
+ };
+ applicationDateModal.addEventListener('show.bs.modal',event=>{
+  const id=event.relatedTarget?.getAttribute('data-date-field');target=id?document.getElementById(id):null;
+  const parts=(target?.value||'').split('T');dateInput.value=parts[0]||'';timeInput.value=parts[1]||'';
+  dateInput.setCustomValidity('');timeInput.setCustomValidity('');
+ });
+ confirm?.addEventListener('click',()=>{
+  if(!dateInput.reportValidity()||!timeInput.reportValidity())return;
+  applyValue(`${dateInput.value}T${timeInput.value}`);
+ });
+ clear?.addEventListener('click',()=>applyValue(''));
+}
+// Venue information stays on the application page; no navigation away from the form.
+const appVenueModal=document.getElementById('applicationVenueModal');
+if(appVenueModal){
+ const fill=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
+ appVenueModal.addEventListener('show.bs.modal',event=>{
+  const b=event.relatedTarget; if(!b)return;
+  fill('applicationVenueTitle',b.dataset.venueName||'SICC venue');
+  fill('applicationVenueDescription',b.dataset.venueDescription||'');
+  fill('applicationVenueFloor',`Level ${b.dataset.venueFloor||'-'}, SICC`);
+  fill('applicationVenueCapacity',`${Number(b.dataset.venueCapacity||0).toLocaleString()} people (configured maximum)`);
+  fill('applicationVenueFacilities',b.dataset.venueFacilities||'Not specified');
+  fill('applicationVenueUses',b.dataset.venueUses||'');
+  const media=document.getElementById('applicationVenueImage');
+  media?.replaceChildren();
+  if(media){
+   if(b.dataset.venueImage){const img=document.createElement('img');img.src=b.dataset.venueImage;img.alt=b.dataset.venueName||'Venue photo';img.loading='lazy';media.appendChild(img);}
+   else{const blank=document.createElement('p');blank.textContent='Photo unavailable for this venue';media.appendChild(blank);}
+  }
+ });
+}
+document.querySelectorAll('[data-staff-choice]').forEach(input=>{
+ const qty=document.querySelector(`[data-staff-qty="${input.dataset.staffChoice}"]`);
+ if(!qty)return;
+ const sync=()=>{qty.disabled=!input.checked;if(!input.checked)qty.value='1';};
+ input.addEventListener('change',sync);sync();
+});
+// Plain client-side feedback. Server validation remains authoritative.
+document.querySelectorAll('form:has(.application-date-input)').forEach(form=>{
+ form.addEventListener('submit',event=>{
+  for(const name of ['preferred_start','preferred_end']){
+   const field=form.elements.namedItem(name);
+   if(field && !field.value){event.preventDefault();document.getElementById(`dateButton_${name}`)?.focus();alert('Choose both proposed start and end dates using the Confirm selection button.');return;}
+  }
+ });
+});

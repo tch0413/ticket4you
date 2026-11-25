@@ -9,9 +9,9 @@ function eventHandle(): void {
   audit('event_translation_approved','event_translations',$id,$loc);message('Approved event translation saved.');go('events',['id'=>$id]);
  }
  if($a==='apply_event'||$a==='edit_application'){
-  $u=requireVerified();$title=req('title',190);$description=req('description',5000);$tag=req('category_tag',80);
+  $u=requireLogin();$title=req('title',190);$description=req('description',5000);$tag=req('category_tag',80);
   $venue=positive('preferred_venue_id');$start=at('preferred_start');$end=at('preferred_end');validatePeriod($start,$end);
-  $staff=req('staffing_plan',500);$contact=req('contact_phone',40);$attendance=positive('expected_attendance',100000);
+  $staff=eventStaffingPlan($_POST);$contact=req('contact_phone',40);$attendance=positive('expected_attendance',100000);
   $v=one("SELECT id,capacity FROM venues WHERE id=? AND status='active'",[$venue]);must((bool)$v && $attendance<=(int)$v['capacity'],'Requested attendance exceeds preferred venue physical capacity.');
   if($a==='apply_event'){
    q('INSERT INTO event_applications(applicant_id,title,description,category_tag,contact_phone,expected_attendance,preferred_venue_id,preferred_start,preferred_end,staffing_plan,remarks) VALUES(?,?,?,?,?,?,?,?,?,?,?)',[$u['id'],$title,$description,$tag,$contact,$attendance,$venue,$start,$end,$staff,optional('remarks',1000)]);
@@ -23,7 +23,7 @@ function eventHandle(): void {
   message('Application submitted. Venue is not reserved until Admin approval.');go('events');
  }
  if($a==='withdraw_application'){
-  $u=requireVerified();$id=positive('id');$app=one('SELECT * FROM event_applications WHERE id=?',[$id]);
+  $u=requireLogin();$id=positive('id');$app=one('SELECT * FROM event_applications WHERE id=?',[$id]);
   must((bool)$app&&(int)$app['applicant_id']===(int)$u['id']&&in_array($app['status'],['pending','revision'],true),'Cannot withdraw this application.');
   q("UPDATE event_applications SET status='withdrawn' WHERE id=?",[$id]);audit('application_delete_withdraw','event_applications',$id);message('Application withdrawn.');go('events');
  }
@@ -135,9 +135,79 @@ function eventView(): void {
  tbl(['Event','Status','Manage'],array_map(fn($x)=>[e($x['title']),b($x['status']),'<a href="'.e(url('events',['id'=>$x['id']])).'">Open</a>'],$ev));endPanel();}
  if(!$admin && !isset($_GET['id'])){
   $editing=isset($_GET['application_id'])?one('SELECT * FROM event_applications WHERE id=? AND applicant_id=?',[(int)$_GET['application_id'],$u['id']]):null;
-  panel($editing?'Revise event proposal':'Submit event application');startForm($editing?'edit_application':'apply_event',$editing?['id'=>$editing['id']]:[]);
-  field('title','Proposed event title','text',$editing['title']??'');area('description','Event description',$editing['description']??'');field('category_tag','Category tag','text',$editing['category_tag']??'Music');field('contact_phone','Contact phone','text',$editing['contact_phone']??$u['phone']);field('expected_attendance','Expected attendance','number',$editing['expected_attendance']??100);
-  $vs=all("SELECT id,name,capacity FROM venues WHERE status='active' ORDER BY name");choices('preferred_venue_id','Preferred SICC venue',array_column($vs,'name','id'),$editing['preferred_venue_id']??null);
-  field('preferred_start','Proposed start','datetime-local',datetimeInput($editing['preferred_start']??null));field('preferred_end','Proposed end','datetime-local',datetimeInput($editing['preferred_end']??null));field('staffing_plan','Staffing plan','text',$editing['staffing_plan']??'Entrance and booking staff');area('remarks','Remarks (optional)',$editing['remarks']??'');endForm('Submit proposal');endPanel();
+   panel($editing?'Revise event proposal':'Submit event application');startForm($editing?'edit_application':'apply_event',$editing?['id'=>$editing['id']]:[]);
+   field('title','Proposed event title','text',$editing['title']??'');area('description','Event description',$editing['description']??'');field('category_tag','Category tag','text',$editing['category_tag']??'Music');
+   echo '<p class="small text-muted">Contact email: <strong>'.e($u['email']).'</strong> (from your signed-in account). You do not need to enter it again.</p>';
+   field('contact_phone','Contact phone','text',$editing['contact_phone']??$u['phone']);field('expected_attendance','Expected attendance','number',$editing['expected_attendance']??100,'min="1" max="100000"');
+   $vs=all("SELECT id,name,capacity,level_no,facilities FROM venues WHERE status='active' ORDER BY level_no,name");
+   eventApplicationVenueSelector($vs, $editing['preferred_venue_id']??null);
+   echo '<div class="row g-3 mb-3"><div class="col-lg-6">';eventApplicationDateInput('preferred_start','Proposed start',$editing['preferred_start']??null);
+   echo '</div><div class="col-lg-6">';eventApplicationDateInput('preferred_end','Proposed end',$editing['preferred_end']??null);echo '</div></div>';
+   eventApplicationStaffFields($editing['staffing_plan']??'');area('remarks','Remarks (optional)',$editing['remarks']??'');
+   echo '<p class="small text-muted">A venue request does not reserve the space. SICC Admin confirms availability and final allocation.</p>';
+   endForm($editing?'Save revised proposal':'Submit proposal');endPanel();
+   eventApplicationModals();
  }
+}
+
+/** Staff quantities are structured by category; the existing VARCHAR staffing_plan stays compatible. */
+function eventStaffTypes(): array {return ['entrance'=>'Entrance Staff','booking'=>'Booking Staff','finance'=>'Finance Staff','management'=>'Event Management Staff'];}
+function eventStaffingPlan(array $post): string {
+ $selected=$post['staff_types']??[];$quantities=$post['staff_quantities']??[];
+ if(!is_array($selected)||!is_array($quantities)||count($selected)>4)throw new DomainException('Invalid staffing selection.');
+ $selected=array_values(array_unique(array_map('strval',$selected)));
+ if(array_diff($selected,array_keys(eventStaffTypes())))throw new DomainException('Invalid staff category.');
+ $out=[];$total=0;
+ foreach(eventStaffTypes() as $key=>$label){
+  if(!in_array($key,$selected,true))continue;
+  $raw=$quantities[$key]??null;
+  if(!is_scalar($raw)||!preg_match('/^(?:[1-9][0-9]?|100)$/D',(string)$raw))throw new DomainException('Select a quantity from 1 to 100 for '.$label.'.');
+  $qty=(int)$raw;$total+=$qty;$out[]=$label.': '.$qty;
+ }
+ if($total>200)throw new DomainException('Maximum 200 requested staff across categories.');
+ return $out?implode('; ',$out):'No additional staff requested';
+}
+function eventApplicationStaffFields(string $previous): void {
+ $qty=[];foreach(eventStaffTypes() as $key=>$label){
+  if(preg_match('/(?:^|;\s*)'.preg_quote($label,'/').':\s*(\d+)(?:;|$)/',$previous,$m))$qty[$key]=(int)$m[1];
+ }
+ echo '<fieldset class="application-staff mb-4"><legend class="h6">'.e(tr('Staff assistance requested')).'</legend><p class="small text-muted">Select which SICC staff categories you need and enter a quantity. Leave all unchecked if no staff are needed.</p><div class="row g-2">';
+ foreach(eventStaffTypes() as $key=>$label){$active=isset($qty[$key])&&$qty[$key]>0;
+  echo '<div class="col-lg-6"><div class="application-staff-choice"><label for="staffType_'.e($key).'" class="form-check-label"><input class="form-check-input me-2" type="checkbox" id="staffType_'.e($key).'" name="staff_types[]" value="'.e($key).'" data-staff-choice="'.e($key).'"'.($active?' checked':'').'>'.e(tr($label)).'</label><div><label class="small" for="staffQty_'.e($key).'">'.e(tr('Quantity')).'</label><input class="form-control" type="number" min="1" max="100" name="staff_quantities['.e($key).']" id="staffQty_'.e($key).'" data-staff-qty="'.e($key).'" value="'.($active?$qty[$key]:1).'"'.($active?'':' disabled').'></div></div></div>';
+ }
+ echo '</div></fieldset>';
+ if($previous!=='' && !$qty && $previous!=='No additional staff requested')echo '<p class="small text-muted">Previous free-text plan: '.e($previous).' — choose the staff categories above before saving.</p>';
+}
+function eventApplicationDateInput(string $field,string $label,?string $value): void {
+ $date=datetimeInput($value);
+ echo '<div class="application-date-input"><label class="form-label" for="dateButton_'.e($field).'">'.e(tr($label)).'</label><input type="hidden" id="f_'.e($field).'" name="'.e($field).'" value="'.e($date).'">';
+ echo '<button class="btn btn-outline-secondary application-date-button w-100" type="button" id="dateButton_'.e($field).'" data-date-field="f_'.e($field).'" data-date-placeholder="'.e(tr('Choose date and time')).'" data-bs-toggle="modal" data-bs-target="#applicationDateModal"><span data-date-label>'.e($date!==''?str_replace('T',' at ',$date):tr('Choose date and time')).'</span><span aria-hidden="true">▦</span></button></div>';
+}
+function eventApplicationVenueSelector(array $venues,mixed $selected): void {
+ echo '<fieldset class="mb-4 application-venues"><legend class="h6">'.e(tr('Preferred SICC venue')).'</legend><p class="small text-muted">Only venues configured as active are displayed. Tap “View details” for the image, facilities, floor and capacity. Selection is a request, not a confirmed booking.</p>';
+ if(!$venues)echo '<div class="alert alert-warning">There are currently no requestable venues. Please contact SICC Admin.</div>';
+ echo '<div class="application-venue-grid">';
+ foreach($venues as $i=>$v){
+  $floor=(int)$v['level_no'];$name=(string)$v['name'];$info=siccVenueRecord($name,$floor);
+  $img=siccVenueImage($name,$floor);if($img && !is_file(dirname(__DIR__).'/'.$img))$img=null;
+  $checked=(string)$selected===(string)$v['id']||($selected===null && $i===0);
+  echo '<article class="application-venue-card"><div class="application-venue-photo">';
+  if($img)echo '<img src="'.e($img).'" alt="" loading="lazy">';else echo '<div class="application-venue-placeholder">SICC · Level '.e($floor).'</div>';
+  echo '</div><div class="application-venue-details"><label class="d-flex gap-2 align-items-start" for="venue_'.e($v['id']).'"><input class="form-check-input mt-1" type="radio" id="venue_'.e($v['id']).'" name="preferred_venue_id" value="'.e($v['id']).'"'.($checked?' checked':'').'><span><strong>'.e($name).'</strong><small class="d-block text-muted">Level '.e($floor).' · Capacity up to '.number_format((int)$v['capacity']).' (configuration)</small></span></label>';
+  echo '<button type="button" class="btn btn-sm btn-outline-secondary mt-2" data-bs-toggle="modal" data-bs-target="#applicationVenueModal" data-venue-name="'.e($name).'" data-venue-floor="'.e($floor).'" data-venue-capacity="'.e($v['capacity']).'" data-venue-facilities="'.e((string)($v['facilities']??'Not specified')).'" data-venue-description="'.e((string)$info['description']).'" data-venue-uses="'.e((string)$info['uses']).'" data-venue-image="'.e($img??'').'">'.e(tr('View details')).'</button></div></article>';
+ }
+ echo '</div></fieldset>';
+}
+function eventApplicationModals(): void {
+ $html=<<<'HTML'
+<div class="modal fade" id="applicationDateModal" tabindex="-1" aria-labelledby="applicationDateTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+<div class="modal-header"><h2 class="modal-title fs-5" id="applicationDateTitle">Choose date and time</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+<div class="modal-body"><label for="applicationDateValue" class="form-label">Date</label><input type="date" class="form-control mb-3" id="applicationDateValue" required><label for="applicationTimeValue" class="form-label">Time</label><input type="time" class="form-control" id="applicationTimeValue" step="60" required><p class="small text-muted mt-3">Times use Malaysia time (Asia/Kuching).</p></div>
+<div class="modal-footer"><button type="button" class="btn btn-outline-secondary me-auto" data-date-clear>Clear</button><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" data-date-confirm>Confirm selection</button></div></div></div></div>
+<div class="modal fade" id="applicationVenueModal" tabindex="-1" aria-labelledby="applicationVenueTitle" aria-hidden="true"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content"><div class="modal-header"><h2 class="modal-title fs-5" id="applicationVenueTitle"></h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body application-venue-modal-body"><div id="applicationVenueImage" class="application-venue-modal-image"></div><p id="applicationVenueDescription"></p><dl class="row"><dt class="col-sm-4">Location</dt><dd class="col-sm-8" id="applicationVenueFloor"></dd><dt class="col-sm-4">Configured capacity</dt><dd class="col-sm-8" id="applicationVenueCapacity"></dd><dt class="col-sm-4">Facilities</dt><dd class="col-sm-8" id="applicationVenueFacilities"></dd><dt class="col-sm-4">Typical uses</dt><dd class="col-sm-8" id="applicationVenueUses"></dd></dl><p class="small text-muted">Information is indicative. Venue and time availability are subject to Admin review.</p></div><div class="modal-footer"><button class="btn btn-primary" type="button" data-bs-dismiss="modal">Close details</button></div></div></div></div>
+HTML;
+ foreach(['Choose date and time','Date','Time','Clear','Cancel','Confirm selection','Location','Configured capacity','Facilities','Typical uses','Close details'] as $label){
+  $html=str_replace('>'.$label.'<','>'.e(tr($label)).'<',$html);
+ }
+ echo $html;
 }

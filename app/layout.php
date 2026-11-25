@@ -23,9 +23,9 @@ function customerSidebar(string $page,array $u): void {
  echo '<div class="customer-mobile-menu"><button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#customerSidebar" aria-controls="customerSidebar" aria-expanded="false">☰ '.e(tr('Customer menu')).'</button></div>';
  echo '<aside class="customer-sidebar collapse" id="customerSidebar" aria-label="'.e(tr('Customer navigation')).'"><div class="customer-side-logo"><span class="customer-side-emblem" aria-hidden="true">✧</span><span>'.e(tr('MY TICKETS4YOU')).'<small>'.e(tr('CUSTOMER SPACE')).'</small></span></div>';
  $grouped=[
-  'MAIN MENU'=>[['dashboard','Overview','▦'],['customer_events','Explore events','◇'],['customer_bookings','My bookings','▤'],['customer_tickets','My tickets','▣']],
+  'MAIN MENU'=>[['dashboard','Overview','▦'],['customer_events','Explore events','◇'],['customer_bookings','My bookings','▤'],['customer_tickets','My tickets','▣'],['events','Event applications','◈']],
   'MY EXPERIENCE'=>[['customer_favorites','Saved events','♡'],['customer_rewards','Rewards','✧'],['customer_recommendations','Recommendations','✦'],['notifications','Notifications','♧']],
-  'ACCOUNT & HELP'=>[['support','Help & refunds','?'],['events','Event applications','◈'],['account','My profile','◉'],['mfa','Security settings','◇'],['floor','Floor directory','⌖']]
+  'ACCOUNT & HELP'=>[['support','Help & refunds','?'],['account','My profile','◉'],['mfa','Security settings','◇'],['floor','Floor directory','⌖']]
  ];
  foreach($grouped as $group=>$links){echo '<div class="customer-nav-group"><span class="customer-group-title">'.e(tr($group)).'</span>';
   foreach($links as [$key,$label,$icon]){
@@ -54,7 +54,7 @@ function layoutTop(string $title): void {
  echo '<div class="d-flex align-items-center gap-2 order-xl-3 header-actions">';
  // The bar only shows the current language; other options appear after opening the menu.
  echo '<div class="dropdown language-menu"><button class="language-trigger dropdown-toggle" type="button" id="languageSelector" data-bs-toggle="dropdown" aria-expanded="false" aria-label="'.e(tr('Language')).': '.e(localeName()).'"><span class="language-globe" aria-hidden="true">◎</span><span class="language-active">'.e(localeName()).'</span></button><ul class="dropdown-menu dropdown-menu-end" aria-labelledby="languageSelector">';
- $keep=[];foreach(['page','id','event_id','session_id','edit','application_id','edit_layout','prefill','floor','chart','range','from','to','category','search','order_id'] as $key)if(isset($_GET[$key])&&is_scalar($_GET[$key]))$keep[$key]=(string)$_GET[$key];
+ $keep=[];foreach(['page','id','event_id','session_id','edit','application_id','edit_layout','prefill','floor','chart','range','from','to','category','search','order_id','tab'] as $key)if(isset($_GET[$key])&&is_scalar($_GET[$key]))$keep[$key]=(string)$_GET[$key];
  $keep['page']=$page;
  foreach(['en','ms','zh-CN','zh-TW'] as $code){
   $params=$keep;$params['lang']=$code;
@@ -62,7 +62,9 @@ function layoutTop(string $title): void {
  }
  echo '</ul></div>';
  if($u){$name=trim((string)$u['full_name']);$initial=function_exists('mb_substr')?mb_substr($name,0,1):substr($name,0,1);
-  echo '<div class="dropdown user-menu"><button class="user-trigger dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false"><span class="user-avatar">'.e(strtoupper($initial)).'</span><span class="user-name d-none d-lg-inline">'.e(mbSafe($name,20)).'</span></button><ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu"><li class="dropdown-header">'.e($role).'</li><li>'.topNavLink('account','My Account',$page,'dropdown-item').'</li><li>'.topNavLink('mfa','MFA',$page,'dropdown-item').'</li><li><hr class="dropdown-divider"></li><li>'.topNavLink('logout','Sign out',$page,'dropdown-item').'</li></ul></div>';
+  echo '<div class="dropdown user-menu" data-hover-account-menu><button class="user-trigger dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false"><span class="user-avatar">'.e(strtoupper($initial)).'</span><span class="user-name d-none d-lg-inline">'.e(mbSafe($name,20)).'</span></button><ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu"><li class="dropdown-header">'.e($name).'<span class="d-block small text-muted">'.e($role).'</span></li><li>'.topNavLink('account','My profile & security',$page,'dropdown-item').'</li>';
+  if(in_array('customer',$u['roles'],true))echo '<li>'.topNavLink('customer_bookings','My bookings',$page,'dropdown-item').'</li><li>'.topNavLink('customer_tickets','My tickets',$page,'dropdown-item').'</li><li>'.topNavLink('events','Event applications',$page,'dropdown-item').'</li>';
+  echo '<li>'.topNavLink('notifications','Notifications',$page,'dropdown-item').'</li><li>'.topNavLink('mfa','Security settings',$page,'dropdown-item').'</li><li><hr class="dropdown-divider"></li><li>'.topNavLink('logout','Sign out',$page,'dropdown-item').'</li></ul></div>';
  }else echo '<a class="btn btn-brand-outline d-none d-sm-inline-flex" href="'.e(url('login')).'">'.e(tr('Sign in')).'</a>';
  echo '<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavigation" aria-controls="mainNavigation" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button></div>';
  echo '<div class="collapse navbar-collapse order-xl-2" id="mainNavigation"><div class="navbar-nav ms-xl-auto align-items-xl-center gap-xl-2">';
