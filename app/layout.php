@@ -18,16 +18,26 @@ function customerWorkspaceActive(?array $u,string $page): bool {
   'customer_favorites','customer_rewards','customer_recommendations','rewards','booking','support',
   'notifications','account','mfa','events','floor','home','event_details'],true);
 }
+/** Distinct customer sidebar destinations, grouped for navigation. */
+function customerSidebarSections(): array {
+ return [
+  'MAIN MENU'=>[['dashboard','Overview','▦'],['customer_events','Explore events','◇'],['events','Event applications','◈']],
+  'MY EXPERIENCE'=>[['customer_favorites','Saved events','♡'],['customer_rewards','Rewards','✧'],['customer_recommendations','Recommendations','✦']],
+  'ACCOUNT & HELP'=>[['support','Help & refunds','?']]
+ ];
+}
+/** Personal destinations are exposed once, in the customer account menu. */
+function customerAccountLinks(): array {
+ return [
+  ['account','My profile'],['customer_bookings','My bookings'],['customer_tickets','My tickets'],
+  ['notifications','Notifications'],['mfa','Security settings'],['floor','Floor directory'],['logout','Sign out']
+ ];
+}
 function customerSidebar(string $page,array $u): void {
  $name=trim((string)$u['full_name']);$initial=function_exists('mb_substr')?mb_substr($name,0,1):substr($name,0,1);
  echo '<div class="customer-mobile-menu"><button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#customerSidebar" aria-controls="customerSidebar" aria-expanded="false">☰ '.e(tr('Customer menu')).'</button></div>';
  echo '<aside class="customer-sidebar collapse" id="customerSidebar" aria-label="'.e(tr('Customer navigation')).'"><div class="customer-side-logo"><span class="customer-side-emblem" aria-hidden="true">✧</span><span>'.e(tr('MY TICKETS4YOU')).'<small>'.e(tr('CUSTOMER SPACE')).'</small></span></div>';
- $grouped=[
-  'MAIN MENU'=>[['dashboard','Overview','▦'],['customer_events','Explore events','◇'],['customer_bookings','My bookings','▤'],['customer_tickets','My tickets','▣'],['events','Event applications','◈']],
-  'MY EXPERIENCE'=>[['customer_favorites','Saved events','♡'],['customer_rewards','Rewards','✧'],['customer_recommendations','Recommendations','✦'],['notifications','Notifications','♧']],
-  'ACCOUNT & HELP'=>[['support','Help & refunds','?'],['account','My profile','◉'],['mfa','Security settings','◇'],['floor','Floor directory','⌖']]
- ];
- foreach($grouped as $group=>$links){echo '<div class="customer-nav-group"><span class="customer-group-title">'.e(tr($group)).'</span>';
+ foreach(customerSidebarSections() as $group=>$links){echo '<div class="customer-nav-group"><span class="customer-group-title">'.e(tr($group)).'</span>';
   foreach($links as [$key,$label,$icon]){
    $active=$page===$key || (in_array($page,['booking','event_details'],true)&&$key==='customer_events') || ($page==='home'&&$key==='customer_events');
    echo '<a class="customer-side-link'.($active?' active':'').'" href="'.e(url($key)).'"'.($active?' aria-current="page"':'').'><span class="customer-nav-symbol" aria-hidden="true">'.e($icon).'</span><span>'.e(tr($label)).'</span>'.($active?'<span class="customer-active-marker" aria-hidden="true"></span>':'').'</a>';
@@ -62,14 +72,25 @@ function layoutTop(string $title): void {
  }
  echo '</ul></div>';
  if($u){$name=trim((string)$u['full_name']);$initial=function_exists('mb_substr')?mb_substr($name,0,1):substr($name,0,1);
-  echo '<div class="dropdown user-menu" data-hover-account-menu><button class="user-trigger dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false"><span class="user-avatar">'.e(strtoupper($initial)).'</span><span class="user-name d-none d-lg-inline">'.e(mbSafe($name,20)).'</span></button><ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu"><li class="dropdown-header">'.e($name).'<span class="d-block small text-muted">'.e($role).'</span></li><li>'.topNavLink('account','My profile & security',$page,'dropdown-item').'</li>';
-  if(in_array('customer',$u['roles'],true))echo '<li>'.topNavLink('customer_bookings','My bookings',$page,'dropdown-item').'</li><li>'.topNavLink('customer_tickets','My tickets',$page,'dropdown-item').'</li><li>'.topNavLink('events','Event applications',$page,'dropdown-item').'</li>';
-  echo '<li>'.topNavLink('notifications','Notifications',$page,'dropdown-item').'</li><li>'.topNavLink('mfa','Security settings',$page,'dropdown-item').'</li><li><hr class="dropdown-divider"></li><li>'.topNavLink('logout','Sign out',$page,'dropdown-item').'</li></ul></div>';
+  echo '<div class="dropdown user-menu" data-hover-account-menu><button class="user-trigger dropdown-toggle" type="button" id="userMenu" data-bs-toggle="dropdown" aria-expanded="false"><span class="user-avatar">'.e(strtoupper($initial)).'</span><span class="user-name d-none d-lg-inline">'.e(mbSafe($name,20)).'</span></button><ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userMenu"><li class="dropdown-header">'.e($name).'<span class="d-block small text-muted">'.e($role).'</span></li>';
+  if($customerShell){
+   foreach(customerAccountLinks() as [$key,$label]){
+    if($key==='logout')echo '<li><hr class="dropdown-divider"></li>';
+    echo '<li>'.topNavLink($key,$label,$page,'dropdown-item').'</li>';
+   }
+  }else{
+   echo '<li>'.topNavLink('account','My profile & security',$page,'dropdown-item').'</li>';
+   if(in_array('customer',$u['roles'],true))echo '<li>'.topNavLink('customer_bookings','My bookings',$page,'dropdown-item').'</li><li>'.topNavLink('customer_tickets','My tickets',$page,'dropdown-item').'</li><li>'.topNavLink('events','Event applications',$page,'dropdown-item').'</li>';
+   echo '<li>'.topNavLink('notifications','Notifications',$page,'dropdown-item').'</li><li>'.topNavLink('mfa','Security settings',$page,'dropdown-item').'</li><li><hr class="dropdown-divider"></li><li>'.topNavLink('logout','Sign out',$page,'dropdown-item').'</li>';
+  }
+  echo '</ul></div>';
  }else echo '<a class="btn btn-brand-outline d-none d-sm-inline-flex" href="'.e(url('login')).'">'.e(tr('Sign in')).'</a>';
- echo '<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavigation" aria-controls="mainNavigation" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button></div>';
+ if(!$customerShell)echo '<button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNavigation" aria-controls="mainNavigation" aria-expanded="false" aria-label="Toggle navigation"><span class="navbar-toggler-icon"></span></button>';
+ echo '</div>';
  echo '<div class="collapse navbar-collapse order-xl-2" id="mainNavigation"><div class="navbar-nav ms-xl-auto align-items-xl-center gap-xl-2">';
- echo topNavLink($customerShell?'customer_events':'home','Explore events',$page);echo topNavLink('floor','Floor directory',$page);
- if($u){echo topNavLink('dashboard','Dashboard',$page);if(!$customerShell)echo navDropdown('My space',['booking'=>'Bookings','support'=>'Support','notifications'=>'Notices','rewards'=>'Rewards','account'=>'Account'],$page,'spaceNavigation');
+ // Customer workspace destinations already have one home in the sidebar or account menu.
+ if(!$customerShell){echo topNavLink('home','Explore events',$page);echo topNavLink('floor','Floor directory',$page);}
+ if($u){if(!$customerShell){echo topNavLink('dashboard','Dashboard',$page);echo navDropdown('My space',['booking'=>'Bookings','support'=>'Support','notifications'=>'Notices','rewards'=>'Rewards','account'=>'Account'],$page,'spaceNavigation');}
   if(isAdmin()||(! $customerShell && hasRole('organiser'))){
    $manage=['events'=>'Event Admin','venue'=>'Venues','session'=>'Sessions','category'=>'Categories'];
    if(isAdmin())$manage+=['uam'=>'Users','schedule'=>'Scheduling','policy'=>'Refund Policy','report'=>'Reports'];
