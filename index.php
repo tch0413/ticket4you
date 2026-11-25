@@ -31,6 +31,8 @@ require_once __DIR__.'/shared/Export.php';
 sessionInit();
 localeCode();
 $page=(string)($_GET['page']??'home');
+// Buffer the page shell so an exception cannot leave a second HTML document inside it.
+$viewBufferLevel=null;
 try {
  if($page==='analytics_data')adminAnalyticsData();
  // GET handlers for single-use email verification / ticket transfer / sign-out.
@@ -60,6 +62,8 @@ try {
   'guest'=>'Guest Ticket Access','staffhelp'=>'Staff Contact Admin'
  ];
  if(!isset($pages[$page])){http_response_code(404);throw new DomainException('Page not found.');}
+ $viewBufferLevel=ob_get_level();
+ ob_start();
  layoutTop($page==='dashboard' && customerWorkspaceActive(user(),'dashboard') ? 'Upcoming SICC Events' : ($page==='dashboard' && isAdmin() ? 'Administrator Dashboard' : $pages[$page]));
  switch($page){
   case 'home': publicEventsView();break;
@@ -89,7 +93,15 @@ try {
   case 'staffhelp':staffHelpView();break;
  }
  layoutBottom();
+ $completePage=(string)ob_get_clean();
+ $viewBufferLevel=null;
+ echo $completePage;
 } catch(DomainException $e){
+ // Remove the incomplete layout before generating a single clean error page.
+ if($viewBufferLevel!==null){
+  while(ob_get_level()>$viewBufferLevel)ob_end_clean();
+  $viewBufferLevel=null;
+ }
  http_response_code(http_response_code()>=400?http_response_code():422);
  // Keep the selected sign-in page visible on wrong-role or wrong-password errors.
  // Credentials are never repeated back into HTML or stored in a flash message.
@@ -102,6 +114,10 @@ try {
   layoutTop('Unable to complete request');echo '<div class="alert alert-warning">'.e($e->getMessage()).'</div><p><a href="?page=home">Return to events</a> · <a href="javascript:history.back()">Go back</a></p>';layoutBottom();
  }
 } catch(Throwable $e){
+ if($viewBufferLevel!==null){
+  while(ob_get_level()>$viewBufferLevel)ob_end_clean();
+  $viewBufferLevel=null;
+ }
  error_log('[T4Y] '.$e->getMessage().' at '.$e->getFile().':'.$e->getLine());
  http_response_code(500);layoutTop('Application error');
  echo '<div class="alert alert-danger">A server or database error occurred. Check the PHP error log and the installation instructions.</div>';
