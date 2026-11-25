@@ -106,11 +106,13 @@ function customerEventsView(bool $dashboard, array $u): void {
     echo '</section>';
 }
 function customerBookingsView(array $u): void {
-    $orders = all('SELECT o.id,o.booking_ref,o.status,o.grand_total,o.paid_at,s.label,s.start_at,e.title FROM booking_orders o JOIN event_sessions s ON s.id=o.session_id JOIN events e ON e.id=s.event_id WHERE o.user_id=? ORDER BY o.id DESC LIMIT 100',[$u['id']]);
+    $filters=bookingHistoryFilters((int)$u['id'],$_GET);
+    $orders = all('SELECT o.id,o.booking_ref,o.status,o.grand_total,o.paid_at,o.hold_expires_at,s.label,s.start_at,e.title FROM booking_orders o JOIN event_sessions s ON s.id=o.session_id JOIN events e ON e.id=s.event_id'.$filters['where'].' ORDER BY o.id DESC LIMIT 100',$filters['params']);
     echo '<section class="customer-section-heading"><div><div class="customer-section-kicker">'.e(tr('YOUR ORDERS')).'</div><h2>'.e(tr('My bookings')).'</h2><p>'.e(tr('Review bookings, payment status and receipts.')).'</p></div><a class="btn btn-outline-primary" href="'.e(url('customer_events')).'">'.e(tr('Explore events')).'</a></section>';
-    if(!$orders){customerEmpty('No bookings yet','Find your first event and reserve your tickets.','customer_events','Browse events');return;}
+    bookingHistoryForm('customer_bookings',$filters);
+    if(!$orders){if($filters['search']!==''||$filters['status']!=='')echo '<p>No bookings match the selected filters.</p>';else customerEmpty('No bookings yet','Find your first event and reserve your tickets.','customer_events','Browse events');return;}
     panel('Booking history');$rows=[];
-    foreach($orders as $o){$rows[]=[e($o['booking_ref']),e($o['title']),e($o['start_at']).' MYT',b($o['status']),money($o['grand_total']),'<a class="btn btn-sm btn-outline-primary" href="'.e(url('booking',['order_id'=>$o['id']])).'">'.e(tr('Open')).'</a>'];}
+    foreach($orders as $o){$rows[]=[e($o['booking_ref']),e($o['title']),e(($o['label']??'').' · '.$o['start_at']).' MYT',b(bookingDisplayStatus($o)),money($o['grand_total']),'<a class="btn btn-sm btn-outline-primary" href="'.e(url('booking',['order_id'=>$o['id']])).'">'.e(tr('Open')).'</a>'];}
     tbl(['Booking reference','Event','Session','Status','Total','Action'],$rows);endPanel();
 }
 function customerTicketsView(array $u): void {
