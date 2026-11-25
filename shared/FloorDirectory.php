@@ -29,6 +29,32 @@ function siccFloorDirectory(): array {
 }
 /** Image assets match the named venue entries. Other rooms remain without an image until available. */
 function siccVenueImage(string $name, int $level): ?string {
+
+    // Level 5 venue images
+    if ($level === 5) {
+        $images = [
+            'Kadamaian' => 'kadamaian.webp',
+            'Mesilau' => 'mesilau.webp',
+            'Dinawan' => 'dinawan.webp',
+            'Madai' => 'madai.webp',
+            'Sepilok' => 'sepilok.webp',
+            'Selingan' => 'selingan.webp',
+            'Monsopiad' => 'monsopiad.webp',
+            'Klias' => 'klias.webp',
+            'Mantanani' => 'mantanani.webp',
+            'Rafflesia' => 'rafflesia.webp',
+            'Kianbalu I' => 'kianbalu-i.webp',
+            'Kinabalu II' => 'kinabalu-ii.webp',
+            'Kinabalu III' => 'kinabalu-iii.webp',
+            'Kinabalu I-III' => 'kinabalu-i-iii.webp',
+            'Kinabalu Foyer I' => 'kinabalu-foyer-i.webp',
+        ];
+
+        return isset($images[$name])
+            ? 'assets/venues/' . $images[$name]
+            : null;
+    }
+
     // Level 4 venue images
     if ($level === 4) {
         $images = [
