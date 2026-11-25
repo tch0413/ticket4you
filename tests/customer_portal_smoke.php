@@ -14,11 +14,10 @@ function cents(mixed $v): int {return (int)round((float)$v*100);}
 function money(mixed $v): string {return 'RM '.number_format((float)$v,2);}
 function eventText(int $id,string $title,string $desc): array {return [$title,$desc];}
 function postButton(string $action,string $label,string $css='',array $extra=[]): string {return '<button class="'.e($css).'" data-action="'.e($action).'">'.e($label).'</button>';}
-function rewardsBalance(int $id): int {return 55;}
 function panel(string $title): void {echo '<section><h2>'.e($title).'</h2>';}
 function endPanel(): void {echo '</section>';}
 function tbl(array $headers,array $rows): void {echo '<table><thead>'.implode('',array_map(fn($h)=>'<th>'.e($h).'</th>',$headers)).'</thead>';foreach($rows as $row)echo '<tr>'.implode('',array_map(fn($cell)=>'<td>'.$cell.'</td>',$row)).'</tr>';echo '</table>';}
-function scalar(string $sql,array $params=[]): mixed {global $queries;$queries[]=[$sql,$params];return 2;}
+function scalar(string $sql,array $params=[]): mixed {global $queries;$queries[]=[$sql,$params];return str_contains($sql,'SUM(points_delta)')?55:2;}
 function all(string $sql,array $params=[]): array {
  global $queries;$queries[]=[$sql,$params];
  if(str_contains($sql,'SELECT e.id,e.title,e.description'))return [[
@@ -37,6 +36,7 @@ function all(string $sql,array $params=[]): array {
  return [];
 }
 function recommendationView(array $u): void {echo '<p>Recommendation settings for '.e($u['id']).'</p>';}
+require_once dirname(__DIR__).'/modules/Booking.php';
 require_once dirname(__DIR__).'/shared/CustomerPortal.php';
 function check(bool $condition,string $message): void {if(!$condition){fwrite(STDERR,"FAIL: $message\n");exit(1);}echo "PASS: $message\n";}
 ob_start();customerPortalView('dashboard');$html=ob_get_clean();
@@ -49,6 +49,9 @@ check(str_contains($tickets,'T4Y-QR-01'),'Ticket list renders its permitted test
 check(count(array_filter($queries,fn($r)=>str_contains($r[0],'o.user_id=?')&&str_contains($r[0],'LOWER(t.holder_email)=LOWER(?)')&&$r[1]===[17,'alex@example.test']))===1,'Ticket list enforces purchaser and current holder scopes');
 $queries=[];ob_start();customerPortalView('customer_bookings');$bookings=ob_get_clean();
 check(str_contains($bookings,'T4Y-0001') && count(array_filter($queries,fn($r)=>str_contains($r[0],'o.user_id=?')&&$r[1]===[17]))===1,'Booking history is restricted to current customer');
+$_GET=['booking_search'=>'T4Y-0001','booking_status'=>'paid'];$queries=[];ob_start();customerPortalView('customer_bookings');$filtered=ob_get_clean();
+check(str_contains($filtered,'booking_search')&&str_contains($filtered,'booking_status')&&count(array_filter($queries,fn($r)=>str_contains($r[0],'o.user_id=?')&&$r[1]===[17,'T4Y-0001','T4Y-0001','paid']))===1,'Booking filters are parameterized and retain customer scope');
+$_GET=[];
 ob_start();customerPortalView('customer_rewards');$rewards=ob_get_clean();
 check(str_contains($rewards,'55'),'Rewards balance and ledger render');
 $testUser['roles']=['staff'];

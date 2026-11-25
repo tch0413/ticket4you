@@ -18,6 +18,41 @@ function promoByCode(string $code,int $eventId,int $subtotal): array {
  return [$p,min($subtotal,$d)];
 }
 function rewardsBalance(int $userId): int {return (int)scalar('SELECT COALESCE(SUM(points_delta),0) FROM reward_ledger WHERE user_id=?',[$userId]);}
+/** Validate category quantities without accepting malformed or duplicate IDs. */
+function bookingQuantities(mixed $input): array {
+ must(is_array($input),'Invalid ticket quantities.');
+ $out=[];
+ foreach($input as $id=>$qty){
+  must(ctype_digit((string)$id)&&(int)$id>0&&!array_key_exists((int)$id,$out),'Invalid category identifier.');
+  $v=is_scalar($qty)?filter_var($qty,FILTER_VALIDATE_INT):false;
+  must($v!==false&&$v>=0&&$v<=100,'Invalid ticket quantity.');
+  $out[(int)$id]=(int)$v;
+ }
+ ksort($out);return $out;
+}
+/** A stable checkout fingerprint invalidates stale payment forms after a quantity change. */
+function bookingCheckoutVersion(array $order,array $items): string {
+ $lines=[];foreach($items as $item)$lines[]=[(int)$item['id'],(int)$item['category_id'],(int)$item['qty'],cents($item['unit_price']),cents($item['unit_fee'])];
+ usort($lines,fn($a,$b)=>$a[0]<=>$b[0]);
+ return hash('sha256',json_encode([(int)$order['id'],cents($order['grand_total']),$order['hold_expires_at'],$lines],JSON_THROW_ON_ERROR));
+}
+function bookingEditable(array $o,int $attempts,int $now): bool {
+ return $o['status']==='pending'&&strtotime($o['hold_expires_at'])>$now&&$attempts===0&&empty($o['discount_source'])&&cents($o['discount_total'])===0;
+}
+/** Recalculate using the original price/fee snapshots; inventory includes this order's current hold. */
+function bookingRevision(array $items,array $requested,array $available,int $sessionAvailable,int $limit): array {
+ $byCategory=[];$oldTotal=0;$subtotal=0;$fee=0;$qtyTotal=0;
+ foreach($items as $item){$byCategory[(int)$item['category_id']]=$item;$oldTotal+=(int)$item['qty'];}
+ must(count($requested)===count($byCategory)&&!array_diff_key($requested,$byCategory),'Edit the original categories only.');
+ foreach($requested as $cat=>$qty){
+  $item=$byCategory[$cat];
+  must($qty<=($available[$cat]??0)+(int)$item['qty'],'Not enough tickets available in category '.$cat.'.');
+  $qtyTotal+=$qty;$subtotal+=cents($item['unit_price'])*$qty;$fee+=cents($item['unit_fee'])*$qty;
+ }
+ must($qtyTotal>=1&&$qtyTotal<=$limit,'Quantity must be within the per-order limit.');
+ must($qtyTotal<=$sessionAvailable+$oldTotal,'Session has insufficient available tickets.');
+ return ['subtotal'=>$subtotal,'fee'=>$fee,'total'=>$subtotal+$fee,'qty'=>$qtyTotal];
+}
 function bookingHandle(): void {
  $a=(string)($_POST['action']??'');$page=(string)($_GET['page']??'');
  if($page==='transfer'&&isset($_GET['token'])){
@@ -58,9 +93,8 @@ function bookingHandle(): void {
   tx(function()use($u,$sessionId){
    $s=one('SELECT * FROM event_sessions WHERE id=? FOR UPDATE',[$sessionId]);must((bool)$s,'Unknown session.');
    $info=sessionBookingInfo($sessionId);must($info && eventIsOnSale($info),'Sales are not open for this published session.');
-   $input=(array)($_POST['qty']??[]);$quantities=[];
-   foreach($input as $id=>$qty){if(!ctype_digit((string)$id))throw new DomainException('Invalid category identifier.');$v=filter_var($qty,FILTER_VALIDATE_INT);if($v===false||$v<0||$v>100)throw new DomainException('Invalid ticket quantity.');if($v)$quantities[(int)$id]=(int)$v;}
-   $bundleId=(int)($_POST['bundle_id']??0);$promoCode=trim((string)($_POST['promo_code']??''));$points=(int)($_POST['redeem_points']??0);
+   $quantities=array_filter(bookingQuantities($_POST['qty']??[]));
+   $bundleId=isset($_POST['bundle_id'])?nonnegative('bundle_id'):0;$promoCode=optional('promo_code',100);$points=isset($_POST['redeem_points'])?nonnegative('redeem_points'):0;
    must($points>=0,'Negative points not permitted.');
    must(($bundleId?1:0)+($promoCode!==''?1:0)+($points>0?1:0)<=1,'Only one discount type (bundle, promo or points) may apply.');
    $bundle=null;if($bundleId){$bundle=one('SELECT * FROM bundle_offers WHERE id=? AND session_id=? AND active=1',[$bundleId,$sessionId]);must((bool)$bundle,'Bundle unavailable.');$quantities=[];foreach(all('SELECT category_id,qty FROM bundle_components WHERE bundle_id=?',[$bundleId]) as $component)$quantities[(int)$component['category_id']]=(int)$component['qty'];}
@@ -88,11 +122,41 @@ function bookingHandle(): void {
    $_SESSION['reserved_order']=$orderId;
   });message('Tickets reserved for checkout. Payment attempt must finish before the original hold expires.');go('booking',['order_id'=>(int)$_SESSION['reserved_order']]);
  }
+ if($a==='update_booking'){
+  $u=requireVerified();$id=positive('order_id');$requested=bookingQuantities($_POST['qty']??[]);
+  $lookup=one('SELECT session_id FROM booking_orders WHERE id=? AND user_id=?',[$id,$u['id']]);
+  must((bool)$lookup,'Booking access denied.');
+  tx(function()use($u,$id,$requested,$lookup){
+   one('SELECT id FROM event_sessions WHERE id=? FOR UPDATE',[$lookup['session_id']]);
+   $o=one('SELECT * FROM booking_orders WHERE id=? FOR UPDATE',[$id]);
+   must((bool)$o&&(int)$o['user_id']===(int)$u['id'],'Booking access denied.');
+   $attempts=(int)scalar('SELECT COUNT(*) FROM payment_transactions WHERE order_id=?',[$id]);
+   must(bookingEditable($o,$attempts,time()),'Only an active undiscounted hold before its first payment attempt can be edited.');
+   $info=sessionBookingInfo((int)$o['session_id']);must($info&&eventIsOnSale($info),'Sales are closed; cancel the hold or complete the existing checkout if permitted.');
+   $items=all('SELECT * FROM booking_items WHERE order_id=? ORDER BY category_id FOR UPDATE',[$id]);
+   must(hash_equals(bookingCheckoutVersion($o,$items),req('checkout_version',64)),'Booking changed. Reopen the checkout and try again.');
+   $available=[];
+   foreach($items as $item){
+    $cat=(int)$item['category_id'];
+    $c=one('SELECT status,type FROM ticket_categories WHERE id=? AND session_id=? FOR UPDATE',[$cat,$o['session_id']]);
+    must($c&&$c['status']==='active'&&$c['type']!=='complimentary','A category is no longer available.');
+    $available[$cat]=inventory((int)$o['session_id'],$cat)['available'];
+   }
+   $totals=bookingRevision($items,$requested,$available,inventory((int)$o['session_id'])['available'],(int)$info['max_per_order']);
+   foreach($items as $item){
+    $qty=$requested[(int)$item['category_id']];
+    if($qty===0)q('DELETE FROM booking_items WHERE id=?',[$item['id']]);
+    else q('UPDATE booking_items SET qty=? WHERE id=?',[$qty,$item['id']]);
+   }
+   q('UPDATE booking_orders SET subtotal=?,fee_total=?,grand_total=? WHERE id=?',[myr($totals['subtotal']),myr($totals['fee']),myr($totals['total']),$id]);
+   audit('booking_update_unpaid','booking_orders',$id,'units='.$totals['qty']);
+  });message('Booking updated. The original checkout deadline is unchanged.');go('booking',['order_id'=>$id]);
+ }
  if($a==='pay'){
   $u=requireVerified();$orderId=positive('order_id');$method=req('method');$result=req('outcome');$key=req('attempt_key',100);
   must(in_array($method,['fpx','card','ewallet','free'],true),'Invalid simulation method.');must(in_array($result,['success','failed'],true),'Invalid simulation result.');
-  $notice=tx(function()use($u,$orderId,$method,$result,$key){
-   $orderInfo=one('SELECT session_id FROM booking_orders WHERE id=?',[$orderId]);must((bool)$orderInfo,'Unknown booking.');
+  $orderInfo=one('SELECT session_id FROM booking_orders WHERE id=? AND user_id=?',[$orderId,$u['id']]);must((bool)$orderInfo,'Unknown booking.');
+  $notice=tx(function()use($u,$orderId,$method,$result,$key,$orderInfo){
    one('SELECT id FROM event_sessions WHERE id=? FOR UPDATE',[$orderInfo['session_id']]);
    $o=one('SELECT * FROM booking_orders WHERE id=? FOR UPDATE',[$orderId]);must((bool)$o && (int)$o['user_id']===(int)$u['id'],'Not your booking.');
    $prior=one('SELECT * FROM payment_transactions WHERE attempt_key=?',[$key]);if($prior){must((int)$prior['order_id']===$orderId,'Attempt key belongs to another booking');return 'Repeated payment submission safely ignored.';}
@@ -101,7 +165,9 @@ function bookingHandle(): void {
    if(strtotime($o['hold_expires_at'])<=time()){
     q("UPDATE booking_orders SET status='expired' WHERE id=?",[$orderId]);return 'Hold expired. Please reserve the tickets again.';
    }
-   $s=sessionBookingInfo((int)$o['session_id']);must($s&&!in_array($s['event_status'],['cancelled','archived'],true)&&$s['status']==='scheduled','Event unavailable.');
+   $checkoutItems=all('SELECT * FROM booking_items WHERE order_id=? ORDER BY id',[$orderId]);
+   must(hash_equals(bookingCheckoutVersion($o,$checkoutItems),req('checkout_version',64)),'Booking changed. Reopen checkout before paying.');
+   $s=sessionBookingInfo((int)$o['session_id']);must($s&&$s['event_status']==='published'&&$s['status']==='scheduled'&&strtotime($s['start_at'])>time(),'Event unavailable.');
    if(cents($o['grand_total'])===0)$method='free';else must($method!=='free','Cannot use free payment method on a payable order.');
    $state=$result==='success'?'success':'failed';
    q('INSERT INTO payment_transactions(order_id,attempt_key,method,status,amount) VALUES(?,?,?,?,?)',[$orderId,$key,$method,$state,$o['grand_total']]);
@@ -135,13 +201,13 @@ function bookingHandle(): void {
   });message($notice);go('booking',['order_id'=>$orderId]);
  }
  if($a==='cancel_order'){
-  $u=requireLogin();$id=positive('order_id');tx(function()use($u,$id){
+  $u=requireLogin();$id=positive('order_id');$lookup=one('SELECT session_id FROM booking_orders WHERE id=? AND user_id=?',[$id,$u['id']]);must((bool)$lookup,'Booking access denied.');tx(function()use($u,$id,$lookup){
+   one('SELECT id FROM event_sessions WHERE id=? FOR UPDATE',[$lookup['session_id']]);
    $o=one('SELECT * FROM booking_orders WHERE id=? FOR UPDATE',[$id]);must((bool)$o&&(int)$o['user_id']===(int)$u['id']&&in_array($o['status'],['pending','failed'],true),'Only your unpaid hold can be cancelled.');
-   $attempts=(int)scalar('SELECT COUNT(*) FROM payment_transactions WHERE order_id=?',[$id]);
-   if($attempts)q("UPDATE booking_orders SET status='cancelled' WHERE id=?",[$id]);
-   else{q('DELETE FROM booking_items WHERE order_id=?',[$id]);q('DELETE FROM booking_orders WHERE id=?',[$id]);}
-   audit('booking_cancel_unpaid','booking_orders',$id);
-  });message('Unpaid hold cancelled and inventory released.');go('booking');
+   $status=strtotime($o['hold_expires_at'])<=time()?'expired':'cancelled';
+   q('UPDATE booking_orders SET status=? WHERE id=?',[$status,$id]);
+   audit('booking_cancel_unpaid','booking_orders',$id,$status);
+  });message('Unpaid hold closed and inventory released. Booking history retained.');go('booking',['order_id'=>$id]);
  }
  if($a==='transfer_request'){
   $u=requireVerified();$tid=positive('ticket_id');$email=ensureEmail(req('recipient_email'));
@@ -156,6 +222,23 @@ function bookingHandle(): void {
   });message('A single-use transfer acceptance email has been queued.');go('booking');
  }
 }
+function bookingDisplayStatus(array $order,?int $now=null): string {
+ return in_array($order['status'],['pending','failed'],true)&&!empty($order['hold_expires_at'])&&strtotime($order['hold_expires_at'])<=($now??time())?'expired':$order['status'];
+}
+function bookingHistoryFilters(?int $userId,array $query): array {
+ $where=[];$params=[];$search=is_string($query['booking_search']??null)?trim(substr($query['booking_search'],0,100)):'';
+ $status=is_string($query['booking_status']??null)?$query['booking_status']:'';
+ if($userId!==null){$where[]='o.user_id=?';$params[]=$userId;}
+ if($search!==''){$where[]='(LOCATE(?,o.booking_ref)>0 OR LOCATE(?,e.title)>0)';$params[]=$search;$params[]=$search;}
+ $expr="CASE WHEN o.status IN ('pending','failed') AND o.hold_expires_at<=NOW() THEN 'expired' ELSE o.status END";
+ if(in_array($status,['pending','failed','paid','cancelled','expired'],true)){$where[]="($expr)=?";$params[]=$status;}else $status='';
+ return ['where'=>$where?' WHERE '.implode(' AND ',$where):'','params'=>$params,'search'=>$search,'status'=>$status];
+}
+function bookingHistoryForm(string $page,array $filters): void {
+ echo '<form method="get" class="row g-2 mb-3"><input type="hidden" name="page" value="'.e($page).'"><div class="col-md-5"><label class="form-label" for="booking_search">Booking reference or event</label><input class="form-control" id="booking_search" name="booking_search" maxlength="100" value="'.e($filters['search']).'"></div><div class="col-md-4"><label class="form-label" for="booking_status">Status</label><select class="form-select" id="booking_status" name="booking_status">';
+ foreach([''=>'All statuses','pending'=>'Pending','failed'=>'Failed','paid'=>'Paid','cancelled'=>'Cancelled','expired'=>'Expired'] as $v=>$label)echo '<option value="'.e($v).'"'.($filters['status']===$v?' selected':'').'>'.e($label).'</option>';
+ echo '</select></div><div class="col-md-3 align-self-end"><button class="btn btn-primary">Filter</button> <a class="btn btn-outline-secondary" href="'.e(url($page)).'">Clear</a></div></form>';
+}
 function bookingView(): void {
  $u=user();$id=(int)($_GET['order_id']??0);$eventId=(int)($_GET['event_id']??0);
  if($eventId){
@@ -166,31 +249,49 @@ function bookingView(): void {
    echo '<p>Approved allocation: '.e($s['capacity']).' · Availability (live): '.inventory((int)$s['id'])['available'].'</p>';
    $cats=all("SELECT * FROM ticket_categories WHERE session_id=? AND status='active' AND type!='complimentary'",[$s['id']]);
    if(!$cats){echo '<p>No public ticket categories yet.</p>';endPanel();continue;}
-   if($u){startForm('reserve',['session_id'=>$s['id']]);}
-   echo '<div class="table-responsive"><table class="table"><thead><tr><th>Category</th><th>Type</th><th>Price</th><th>Available</th>'.($u?'<th>Qty</th>':'').'</tr></thead><tbody>';
-   foreach($cats as $c){echo '<tr><td>'.e($c['name']).'<div class="small text-muted">'.e($c['eligibility']).'</div></td><td>'.e($c['type']).'</td><td>'.money($c['price']).'</td><td>'.inventory((int)$s['id'],(int)$c['id'])['available'].'</td>';if($u)echo '<td><input aria-label="Quantity '.e($c['name']).'" class="form-control" type="number" name="qty['.e($c['id']).']" min="0" max="'.e($ev['max_per_order']).'" value="0" style="max-width:90px"></td>';echo '</tr>';}
+   $info=sessionBookingInfo((int)$s['id']);$open=$info&&eventIsOnSale($info);$canReserve=$u&&in_array('customer',$u['roles'],true)&&$open&&inventory((int)$s['id'])['available']>0;
+   if(!$open)echo '<p class="alert alert-info">Ticket sales are currently closed.</p>';
+   elseif(!inventory((int)$s['id'])['available'])echo '<p class="alert alert-warning">Sold out.</p>';
+   if($canReserve){startForm('reserve',['session_id'=>$s['id']]);}
+   echo '<div class="table-responsive"><table class="table"><thead><tr><th>Category</th><th>Type</th><th>Price</th><th>Available</th>' .($canReserve?'<th>Qty</th>':'').'</tr></thead><tbody>';
+   foreach($cats as $c){$available=inventory((int)$s['id'],(int)$c['id'])['available'];echo '<tr><td>'.e($c['name']).'<div class="small text-muted">'.e($c['eligibility']).'</div></td><td>'.e($c['type']).'</td><td>'.money($c['price']).'</td><td>'.($available?e($available):'<span class="badge text-bg-secondary">Sold out</span>').'</td>';if($canReserve)echo '<td><input aria-label="Quantity '.e($c['name']).'" class="form-control" type="number" name="qty['.e($c['id']).']" min="0" max="'.min(100,(int)$ev['max_per_order'],$available).'" value="0" style="max-width:90px"'.(!$available?' readonly':'').'></td>';echo '</tr>';}
    echo '</tbody></table></div>';
-   if($u){
+   if($canReserve){
     echo '<p class="small text-muted">Choose at most one: promo code, loyalty points, or a same-session bundle offer. Only confirmed payments issue tickets.</p>';
     field('promo_code','Optional promo code');field('redeem_points','Optional loyalty points to redeem','number',0,'min="0"');
     $bundles=all('SELECT id,name,price FROM bundle_offers WHERE session_id=? AND active=1',[$s['id']]);
     choices('bundle_id','Optional bundle offer',['0'=>'None (use category quantities)']+array_column(array_map(fn($b)=>['id'=>$b['id'],'label'=>$b['name'].' · '.money($b['price'])],$bundles),'label','id'));
     endForm('Reserve selected tickets');
-   }else echo '<a href="'.e(url('login')).'">Sign in and verify email to reserve.</a>';
+   }elseif(!$u&&$open)echo '<a href="'.e(url('login')).'">Sign in and verify email to reserve.</a>';
    endPanel();
   }return;
  }
  if(!$u){echo '<p>Browse <a href="?page=home">public events</a> or sign in to view bookings.</p>';return;}
  if(!$id && in_array('customer',$u['roles'],true) && ($_SESSION['login_portal']??'customer')==='customer'){ customerBookingsView($u);return; }
  if($id){
-  $o=one('SELECT o.*,s.start_at,e.title event_title FROM booking_orders o JOIN event_sessions s ON s.id=o.session_id JOIN events e ON e.id=s.event_id WHERE o.id=?',[$id]);
+  $o=one('SELECT o.*,s.start_at,s.label session_label,e.title event_title FROM booking_orders o JOIN event_sessions s ON s.id=o.session_id JOIN events e ON e.id=s.event_id WHERE o.id=?',[$id]);
   must((bool)$o && ((int)$o['user_id']===(int)$u['id']||isAdmin()),'Booking access denied.');
-  panel('Order '.$o['booking_ref']);echo '<p>Event: '.e($o['event_title']).' · Session: '.e($o['start_at']).' MYT · Status: '.b($o['status']).'</p>';
+  $owner=(int)$o['user_id']===(int)$u['id'];
+  $items=all('SELECT bi.*,c.name category_name FROM booking_items bi JOIN ticket_categories c ON c.id=bi.category_id WHERE bi.order_id=? ORDER BY bi.id',[$id]);
+  $status=bookingDisplayStatus($o);
+  panel('Order '.$o['booking_ref']);echo '<p>Event: '.e($o['event_title']).' · Session: '.e($o['session_label']).' · '.e($o['start_at']).' MYT · Status: '.b($status).'</p>';
+  tbl(['Category','Quantity','Unit price','Unit fee','Before discounts'],array_map(fn($item)=>[e($item['category_name']),e($item['qty']),money($item['unit_price']),money($item['unit_fee']),money(myr((cents($item['unit_price'])+cents($item['unit_fee']))*(int)$item['qty']))],$items));
   tbl(['Subtotal','Discount','Fees','Grand total'],[[money($o['subtotal']),money($o['discount_total']),money($o['fee_total']),money($o['grand_total'])]]);
-  if(in_array($o['status'],['pending','failed'],true)){
+  if(in_array($status,['pending','failed'],true)&&$owner){
+   $version=bookingCheckoutVersion($o,$items);
    echo '<p>Hold expires: <strong>'.e($o['hold_expires_at']).' MYT</strong>. Payment methods simulate success or failure; no money or card information is collected.</p>';
-   startForm('pay',['order_id'=>$o['id'],'attempt_key'=>token(16)]);choices('method','Simulated method',['fpx'=>'FPX','card'=>'Card (no card data)','ewallet'=>'E-wallet','free'=>'Free checkout']);choices('outcome','Simulated outcome',['success'=>'Success','failed'=>'Failure']);endForm('Complete simulated payment');echo ' '.postButton('cancel_order','Cancel unpaid hold','btn btn-outline-danger',['order_id'=>$id]);
-  }
+   $attempts=(int)scalar('SELECT COUNT(*) FROM payment_transactions WHERE order_id=?',[$id]);
+   if(bookingEditable($o,$attempts,time())){
+    echo '<h3 class="h6">Edit ticket quantities</h3><p class="small text-muted">Original categories only. The reservation deadline will not restart. To change discounts or add categories, cancel and make a new booking.</p>';
+    startForm('update_booking',['order_id'=>$id,'checkout_version'=>$version]);
+    foreach($items as $item)field('qty['.$item['category_id'].']',$item['category_name'],'number',$item['qty'],'min="0" max="100" required');
+    endForm('Update booking');
+   }
+   echo '<hr><h3 class="h6">Payment</h3>';
+   startForm('pay',['order_id'=>$o['id'],'attempt_key'=>token(16),'checkout_version'=>$version]);
+   $methods=cents($o['grand_total'])===0?['free'=>'Free checkout']:['fpx'=>'FPX','card'=>'Card (no card data)','ewallet'=>'E-wallet'];
+   choices('method','Simulated method',$methods);choices('outcome','Simulated outcome',['success'=>'Success','failed'=>'Failure']);endForm('Complete simulated payment');echo ' '.postButton('cancel_order','Cancel unpaid hold','btn btn-outline-danger',['order_id'=>$id]);
+  }elseif($status==='expired')echo '<p class="alert alert-warning">This reservation expired. Inventory has been released. Make a new booking to continue.</p>';
   if($o['status']==='paid'){
    echo '<p>Paid: '.e($o['paid_at']).'. <a href="'.e(url('ticket_pdf',['order_id'=>$id])).'">Download ticket summary (PDF)</a></p>';
    $ts=all('SELECT t.*,c.name category_name FROM tickets t JOIN booking_items bi ON bi.id=t.booking_item_id JOIN ticket_categories c ON c.id=bi.category_id WHERE bi.order_id=? ORDER BY t.id',[$id]);
@@ -211,8 +312,10 @@ function bookingView(): void {
   choices('recipient_id','Verified customer recipient',array_column($recipients,'full_name','id'));
   field('qty','Number of separate tickets','number',1,'min="1"');endForm('Issue complimentary tickets');endPanel();
  }
- $orders=isAdmin()?all('SELECT * FROM booking_orders ORDER BY id DESC LIMIT 100'):all('SELECT * FROM booking_orders WHERE user_id=? ORDER BY id DESC LIMIT 100',[$u['id']]);
- panel('Booking history');tbl(['Reference','Session ID','Status','Total','Hold / Paid','View'],array_map(fn($o)=>[e($o['booking_ref']),e($o['session_id']),b($o['status']),money($o['grand_total']),e($o['paid_at']??$o['hold_expires_at']),'<a href="'.e(url('booking',['order_id'=>$o['id']])).'">Open</a>'],$orders));endPanel();
+ $filters=bookingHistoryFilters(isAdmin()?null:(int)$u['id'],$_GET);
+ $orders=all('SELECT o.*,s.label,s.start_at,e.title FROM booking_orders o JOIN event_sessions s ON s.id=o.session_id JOIN events e ON e.id=s.event_id'.$filters['where'].' ORDER BY o.id DESC LIMIT 100',$filters['params']);
+ panel('Booking history');bookingHistoryForm('booking',$filters);
+ tbl(['Reference','Event','Session','Status','Total','Hold / Paid','View'],array_map(fn($o)=>[e($o['booking_ref']),e($o['title']),e($o['label'].' · '.$o['start_at']),b(bookingDisplayStatus($o)),money($o['grand_total']),e($o['paid_at']??$o['hold_expires_at']),'<a href="'.e(url('booking',['order_id'=>$o['id']])).'">Open</a>'],$orders));endPanel();
  echo '<a href="?page=home" class="btn btn-primary">Browse public events</a>';
 }
 /** JAY-owned financial settlement: called only after Support approval under a transaction. */
