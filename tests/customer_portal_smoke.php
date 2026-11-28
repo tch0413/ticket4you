@@ -22,7 +22,7 @@ function all(string $sql,array $params=[]): array {
  global $queries;$queries[]=[$sql,$params];
  if(str_contains($sql,'SELECT e.id,e.title,e.description'))return [[
   'id'=>4,'title'=>'Demo Sabah Technology Showcase (fictional)','description'=>'Student technology exhibits',
-  'category_tag'=>'Technology','venue_name'=>'Demo Hall','next_session'=>date('Y-m-d H:i:s',time()+21*86400),'starting_price'=>'15.00','highest_price'=>'30.00','category_names'=>'Student, Standard', 'venue_level'=>2
+  'category_tag'=>'Technology','event_category_id'=>7,'event_category_icon'=>'education','event_category_image'=>'image/png','venue_name'=>'Demo Hall','next_session'=>date('Y-m-d H:i:s',time()+21*86400),'starting_price'=>'15.00','highest_price'=>'30.00','category_names'=>'Student, Standard', 'venue_level'=>2
  ]];
  if(str_contains($sql,'SELECT event_id FROM favorites'))return [['event_id'=>4]];
  if(str_contains($sql,'SELECT o.id,o.booking_ref'))return [[
@@ -38,12 +38,14 @@ function all(string $sql,array $params=[]): array {
 function recommendationView(array $u): void {echo '<p>Recommendation settings for '.e($u['id']).'</p>';}
 require_once dirname(__DIR__).'/modules/Booking.php';
 require_once dirname(__DIR__).'/shared/CustomerPortal.php';
+require_once dirname(__DIR__).'/modules/EventCategory.php';
 function check(bool $condition,string $message): void {if(!$condition){fwrite(STDERR,"FAIL: $message\n");exit(1);}echo "PASS: $message\n";}
 ob_start();customerPortalView('dashboard');$html=ob_get_clean();
 check(str_contains($html,'Demo Sabah Technology Showcase'), 'A customer dashboard displays published SICC events first');
 check(str_contains($html,'customer-searchbox') && str_contains($html,'customer-event-grid'),'Event search and responsive cards are rendered');
 check(str_contains($html,'Upcoming bookings') && str_contains($html,'Valid tickets'),'Booking/ticket quick stats render');
 check(str_contains($html,'Book now') && str_contains($html,'View details') && str_contains($html,'RM 15.00') && str_contains($html,'RM 30.00') && str_contains($html,'Student, Standard'),'Enhanced card shows prices, categories and working navigation links');
+check(str_contains($html,'page=event_category_image&amp;id=7'),'Event category visual rendered without changing ticket categories');
 $queries=[];ob_start();customerPortalView('customer_tickets');$tickets=ob_get_clean();
 check(str_contains($tickets,'T4Y-QR-01'),'Ticket list renders its permitted test record');
 check(count(array_filter($queries,fn($r)=>str_contains($r[0],'o.user_id=?')&&str_contains($r[0],'LOWER(t.holder_email)=LOWER(?)')&&$r[1]===[17,'alex@example.test']))===1,'Ticket list enforces purchaser and current holder scopes');

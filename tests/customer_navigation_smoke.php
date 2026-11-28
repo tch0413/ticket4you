@@ -9,6 +9,8 @@ function isAdmin(): bool {return hasRole('admin');}
 require_once dirname(__DIR__).'/app/core.php';
 require_once dirname(__DIR__).'/app/i18n.php';
 require_once dirname(__DIR__).'/app/layout.php';
+require_once dirname(__DIR__).'/modules/EventCategory.php';
+function staffPermissions(?array $u=null): array {return $u['permissions']??[];}
 function navAssert(bool $ok,string $label): void {
  if(!$ok){fwrite(STDERR,"FAIL $label\n");exit(1);}
  echo "PASS $label\n";
@@ -50,4 +52,11 @@ $fixtureUser=['id'=>1,'full_name'=>'Test Admin','roles'=>['admin']];$_SESSION['l
 ob_start();layoutTop('Users');layoutBottom();$admin=(string)ob_get_clean();
 navAssert(str_contains($admin,'id="managementNavigation"'),'Admin management menu remains available');
 navAssert(countNavigationLink($admin,'floor')===1,'Non-customer floor directory navigation preserved');
+navAssert(countNavigationLink($admin,'event_category')===1,'Admin sees event categories once');
+navAssert(countNavigationLink($admin,'category')===1,'Ticket category navigation retained separately');
+$fixtureUser=['id'=>2,'full_name'=>'Operations','roles'=>['staff'],'permissions'=>['operate']];$_SESSION['login_portal']='staff';$_GET=['page'=>'dashboard'];
+ob_start();layoutTop('Staff');layoutBottom();$staff=(string)ob_get_clean();
+navAssert(countNavigationLink($staff,'event_category')===1,'Operations staff see event categories');
+$fixtureUser['permissions']=['checkin'];ob_start();layoutTop('Staff');layoutBottom();$staff=(string)ob_get_clean();
+navAssert(countNavigationLink($staff,'event_category')===0,'Other staff do not see event categories');
 echo "PASS Customer navigation cleanup smoke test complete.\n";

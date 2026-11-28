@@ -13,6 +13,7 @@ require_once __DIR__.'/shared/FloorDirectory.php';
 require_once __DIR__.'/modules/Event.php';
 require_once __DIR__.'/modules/Session.php';
 require_once __DIR__.'/modules/Category.php';
+require_once __DIR__.'/modules/EventCategory.php';
 require_once __DIR__.'/modules/Booking.php';
 require_once __DIR__.'/modules/Support.php';
 require_once __DIR__.'/modules/Scheduling.php';
@@ -34,6 +35,7 @@ $page=(string)($_GET['page']??'home');
 // Buffer the page shell so an exception cannot leave a second HTML document inside it.
 $viewBufferLevel=null;
 try {
+ if($page==='event_category_image')eventCategoryImage();
  if($page==='analytics_data')adminAnalyticsData();
  // GET handlers for single-use email verification / ticket transfer / sign-out.
  if(in_array($page,['verify','logout'],true))uamHandle();
@@ -41,7 +43,7 @@ try {
  if($_SERVER['REQUEST_METHOD']==='POST'){
   verifyCsrf();
   $action=(string)($_POST['action']??'');must($action!=='','Form action required.');
-  customerPortalHandle();uamHandle();venueHandle();eventHandle();sessionHandle();categoryHandle();bookingHandle();supportHandle();scheduleHandle();
+  customerPortalHandle();uamHandle();venueHandle();eventCategoryHandle();eventHandle();sessionHandle();categoryHandle();bookingHandle();supportHandle();scheduleHandle();
   policyHandle();rewardsHandle();mfaHandle();recommendationHandle();checkinHandle();notificationHandle();
   throw new DomainException('Unknown or unsupported form action.');
  }
@@ -51,7 +53,7 @@ try {
   'login'=>'Choose sign-in portal','login_customer'=>'Customer sign in','login_organiser'=>'Organiser sign in',
   'login_staff'=>'Staff sign in','login_admin'=>'Administrator sign in','forgot'=>'Forgot password','reset'=>'Password recovery',
   'account'=>'My Account','uam'=>'User Account Management','venue'=>'Venue Management',
-  'events'=>'Event Management','session'=>'Session Management','category'=>'Category Management',
+  'events'=>'Event Management','session'=>'Session Management','category'=>'Ticket Category Management','event_category'=>'Event Category Management',
   'booking'=>'Booking / Tickets / Payments','support'=>'Customer Support & Disputes',
   'schedule'=>'Staff Scheduling','policy'=>'Refund Policy Interface','rewards'=>'Customer Rewards',
   'mfa'=>'Multi-Factor Authentication','checkin'=>'QR Validation & Check-in',
@@ -75,6 +77,7 @@ try {
   case 'events':eventView();break;
   case 'session':sessionView();break;
   case 'category':categoryView();break;
+  case 'event_category':eventCategoryView();break;
   case 'booking':bookingView();break;
   case 'support':supportView();break;
   case 'schedule':scheduleView();break;

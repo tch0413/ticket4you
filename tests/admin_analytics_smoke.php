@@ -25,7 +25,7 @@ try {
  checkAnalytics(str_contains($markup,'<svg')&&str_contains($markup,'<title>')&&str_contains($markup,'12'),'SVG chart includes accessible values');
  $breakdown=analyticsBarSvg(['paid'=>3,'cancelled'=>1],'count');
  checkAnalytics(str_contains($breakdown,'<svg')&&str_contains($breakdown,'paid'),'Breakdown chart renders category bars');
- checkAnalytics(count(analyticsBreakdownDefinitions())===3,'Three breakdown charts configured');
+ checkAnalytics(count(analyticsBreakdownDefinitions())===5 && isset(analyticsBreakdownDefinitions()['event_category_revenue'],analyticsBreakdownDefinitions()['event_category_sales'],analyticsBreakdownDefinitions()['category_sales']),'Five breakdown charts include event and ticket category metrics separately');
  $zero=analyticsSvg(['2026-11'=>0],'money',true);
  checkAnalytics(str_contains($zero,'<svg')&&!str_contains($zero,'NaN'),'Empty chart renders safely');
  foreach(['ms','zh-CN','zh-TW'] as $locale){$_SESSION['locale']=$locale;
