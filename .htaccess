@@ -1,4 +1,6 @@
 Options -Indexes
 RewriteEngine On
-RewriteRule ^(app|modules|features|shared|database|storage|scripts|tests|docs)(/|$) - [F,L,NC]
-RewriteRule ^(config\.php|\.env|README\.md)$ - [F,L,NC]
+RewriteRule ^(config|app|modules|features|shared|database|storage|backups|scripts|tests|docs)(/|$) - [F,L,NC]
+RewriteRule ^(config\.php|\.env(?:\..*)?|README\.md)$ - [F,L,NC]
+
+RewriteRule (^|/)\.git(/|$) - [F,L,NC]

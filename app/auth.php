@@ -8,7 +8,7 @@ function sessionInit(): void {
  session_set_cookie_params(['lifetime'=>0,'path'=>'/','secure'=>!empty($_SERVER['HTTPS'])&&$_SERVER['HTTPS']!=='off','httponly'=>true,'samesite'=>'Lax']);
  session_start();
  if(isset($_SESSION['uid'])) {
-  $timeout=(!empty($_SESSION['privileged']))?3600:1800;
+  $timeout=3600; // EventSphere Q22: all roles, 60 minutes of inactivity.
   if(time()-(int)($_SESSION['last_activity']??0)>$timeout){sessionLogout();message('Session expired. Please log in.','warning');}
   elseif(($_SERVER['REQUEST_METHOD']??'GET')!=='HEAD' && ($_GET['poll']??'')!=='1')$_SESSION['last_activity']=time();
  }
