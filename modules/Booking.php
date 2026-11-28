@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+require_once __DIR__.'/BookingPayment.php';
 function proportionalDiscounts(array $prices,int $discount): array {
  $subtotal=array_sum($prices);must($discount>=0&&$discount<=$subtotal,'Invalid allocated discount.');
  if(!$subtotal)return array_fill(0,count($prices),0);
@@ -153,10 +154,9 @@ function bookingHandle(): void {
   });message('Booking updated. The original checkout deadline is unchanged.');go('booking',['order_id'=>$id]);
  }
  if($a==='pay'){
-  $u=requireVerified();$orderId=positive('order_id');$method=req('method');$result=req('outcome');$key=req('attempt_key',100);
-  must(in_array($method,['fpx','card','ewallet','free'],true),'Invalid simulation method.');must(in_array($result,['success','failed'],true),'Invalid simulation result.');
+  $u=requireVerified();$orderId=positive('order_id');$key=req('attempt_key',100);
   $orderInfo=one('SELECT session_id FROM booking_orders WHERE id=? AND user_id=?',[$orderId,$u['id']]);must((bool)$orderInfo,'Unknown booking.');
-  $notice=tx(function()use($u,$orderId,$method,$result,$key,$orderInfo){
+  $notice=tx(function()use($u,$orderId,$key,$orderInfo){
    one('SELECT id FROM event_sessions WHERE id=? FOR UPDATE',[$orderInfo['session_id']]);
    $o=one('SELECT * FROM booking_orders WHERE id=? FOR UPDATE',[$orderId]);must((bool)$o && (int)$o['user_id']===(int)$u['id'],'Not your booking.');
    $prior=one('SELECT * FROM payment_transactions WHERE attempt_key=?',[$key]);if($prior){must((int)$prior['order_id']===$orderId,'Attempt key belongs to another booking');return 'Repeated payment submission safely ignored.';}
@@ -168,9 +168,9 @@ function bookingHandle(): void {
    $checkoutItems=all('SELECT * FROM booking_items WHERE order_id=? ORDER BY id',[$orderId]);
    must(hash_equals(bookingCheckoutVersion($o,$checkoutItems),req('checkout_version',64)),'Booking changed. Reopen checkout before paying.');
    $s=sessionBookingInfo((int)$o['session_id']);must($s&&$s['event_status']==='published'&&$s['status']==='scheduled'&&strtotime($s['start_at'])>time(),'Event unavailable.');
-   if(cents($o['grand_total'])===0)$method='free';else must($method!=='free','Cannot use free payment method on a payable order.');
+   [$method,$provider,$result]=bookingPaymentSelection($_POST,cents($o['grand_total']));
    $state=$result==='success'?'success':'failed';
-   q('INSERT INTO payment_transactions(order_id,attempt_key,method,status,amount) VALUES(?,?,?,?,?)',[$orderId,$key,$method,$state,$o['grand_total']]);
+   q('INSERT INTO payment_transactions(order_id,attempt_key,method,provider,status,amount) VALUES(?,?,?,?,?,?)',[$orderId,$key,$method,$provider,$state,$o['grand_total']]);
    if($state==='failed'){q("UPDATE booking_orders SET status='failed' WHERE id=?",[$orderId]);audit('payment_failed','booking_orders',$orderId);return 'Simulated payment failed; retry before original hold deadline.';}
    // Lock purchaser and any promotion to serialize reward entitlement and redemption checks.
    one('SELECT id FROM users WHERE id=? FOR UPDATE',[$u['id']]);
@@ -279,7 +279,6 @@ function bookingView(): void {
   tbl(['Subtotal','Discount','Fees','Grand total'],[[money($o['subtotal']),money($o['discount_total']),money($o['fee_total']),money($o['grand_total'])]]);
   if(in_array($status,['pending','failed'],true)&&$owner){
    $version=bookingCheckoutVersion($o,$items);
-   echo '<p>Hold expires: <strong>'.e($o['hold_expires_at']).' MYT</strong>. Payment methods simulate success or failure; no money or card information is collected.</p>';
    $attempts=(int)scalar('SELECT COUNT(*) FROM payment_transactions WHERE order_id=?',[$id]);
    if(bookingEditable($o,$attempts,time())){
     echo '<h3 class="h6">Edit ticket quantities</h3><p class="small text-muted">Original categories only. The reservation deadline will not restart. To change discounts or add categories, cancel and make a new booking.</p>';
@@ -287,10 +286,7 @@ function bookingView(): void {
     foreach($items as $item)field('qty['.$item['category_id'].']',$item['category_name'],'number',$item['qty'],'min="0" max="100" required');
     endForm('Update booking');
    }
-   echo '<hr><h3 class="h6">Payment</h3>';
-   startForm('pay',['order_id'=>$o['id'],'attempt_key'=>token(16),'checkout_version'=>$version]);
-   $methods=cents($o['grand_total'])===0?['free'=>'Free checkout']:['fpx'=>'FPX','card'=>'Card (no card data)','ewallet'=>'E-wallet'];
-   choices('method','Simulated method',$methods);choices('outcome','Simulated outcome',['success'=>'Success','failed'=>'Failure']);endForm('Complete simulated payment');echo ' '.postButton('cancel_order','Cancel unpaid hold','btn btn-outline-danger',['order_id'=>$id]);
+   bookingPaymentView($o,$version);echo '<div class="mt-3">'.postButton('cancel_order','Cancel unpaid hold','btn btn-outline-danger',['order_id'=>$id]).'</div>';
   }elseif($status==='expired')echo '<p class="alert alert-warning">This reservation expired. Inventory has been released. Make a new booking to continue.</p>';
   if($o['status']==='paid'){
    echo '<p>Paid: '.e($o['paid_at']).'. <a href="'.e(url('ticket_pdf',['order_id'=>$id])).'">Download ticket summary (PDF)</a></p>';
@@ -301,7 +297,7 @@ function bookingView(): void {
     echo '</div></div></div>';
    }echo '</div>';
   }
-  $pay=all('SELECT method,status,amount,created_at FROM payment_transactions WHERE order_id=? ORDER BY id DESC',[$id]);if($pay){echo '<h3 class="h6 mt-3">Payment attempt history</h3>';tbl(['Method','Status','Amount','At'],array_map(fn($t)=>[e($t['method']),b($t['status']),money($t['amount']),e($t['created_at'])],$pay));}
+  $pay=all('SELECT * FROM payment_transactions WHERE order_id=? ORDER BY id DESC',[$id]);if($pay){echo '<h3 class="h6 mt-3">Payment attempt history</h3>';tbl(['Method','Status','Amount','At'],array_map(fn($t)=>[e(bookingPaymentLabel($t['method'],$t['provider']??null)),b($t['status']),money($t['amount']),e($t['created_at'])],$pay));}
   endPanel();return;
  }
  if(isAdmin()){
