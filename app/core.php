@@ -2,16 +2,11 @@
 declare(strict_types=1);
 require_once dirname(__DIR__) . '/config.php';
 
+require_once dirname(__DIR__).'/config/database.php';
 function db(): PDO {
  static $pdo = null;
  if ($pdo instanceof PDO) return $pdo;
- $dsn = 'mysql:host=' . cfg('T4Y_DB_HOST','127.0.0.1') . ';port=' . cfg('T4Y_DB_PORT','3306') . ';dbname=' . cfg('T4Y_DB_NAME','t4y_chatgpt_db') . ';charset=utf8mb4';
- $pdo = new PDO($dsn, cfg('T4Y_DB_USER','root'), cfg('T4Y_DB_PASS',''), [
-  PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE=>PDO::FETCH_ASSOC,
-  PDO::ATTR_EMULATE_PREPARES=>false
- ]);
- $pdo->exec("SET time_zone = '+08:00'");
- return $pdo;
+ return $pdo = connectDatabase();
 }
 function q(string $sql, array $params=[]): PDOStatement { $st=db()->prepare($sql); $st->execute($params); return $st; }
 function one(string $sql, array $params=[]): ?array { $r=q($sql,$params)->fetch(); return $r===false?null:$r; }
@@ -42,13 +37,7 @@ function cents(mixed $v): int {
 }
 function myr(int $c): string {return number_format($c/100,2,'.','');}
 function money(mixed $v): string {return 'RM '.number_format((float)$v,2);}
-function secret(): string {
- $path=dirname(__DIR__).'/storage/app.key';
- if(!is_file($path))throw new RuntimeException('Missing app key. Run php scripts/install.php first.');
- $key=base64_decode(trim((string)file_get_contents($path)),true);
- if($key===false||strlen($key)!==32)throw new RuntimeException('Invalid app key');
- return $key;
-}
+function secret(): string { return appKey(); }
 function token(int $bytes=24): string {return bin2hex(random_bytes($bytes));}
 function csrf(): string {return (string)($_SESSION['csrf']??=token());}
 function csrfInput(): string {return '<input type="hidden" name="csrf" value="'.e(csrf()).'">';}

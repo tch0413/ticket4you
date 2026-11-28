@@ -1,11 +1,6 @@
--- Tickets4You SRS v3.0 educational prototype. MySQL 8 / MariaDB 10.4+, utf8mb4.
-CREATE DATABASE IF NOT EXISTS t4y_chatgpt_db
-CHARACTER SET utf8mb4
-COLLATE utf8mb4_unicode_ci;
-
-USE t4y_chatgpt_db;
-SET time_zone = '+08:00';
-
+-- EventSphere integration baseline, adapted from the supplied T4Y schema.
+-- Select eventsphere_db (or the configured local database) before running.
+-- Never edit after application; add numbered migrations instead.
 CREATE TABLE IF NOT EXISTS staff_categories (
  id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, name VARCHAR(100) NOT NULL UNIQUE,
  permissions_json TEXT NOT NULL, active TINYINT(1) NOT NULL DEFAULT 1

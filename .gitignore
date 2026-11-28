@@ -4,3 +4,10 @@
 .env
 *.log
 *.sql.gz
+
+/config/database.local.php
+*.pem
+*.key
+*.sql.bak
+*.dump
+/backups/
