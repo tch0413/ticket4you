@@ -9,17 +9,21 @@ function eventHandle(): void {
   audit('event_translation_approved','event_translations',$id,$loc);message('Approved event translation saved.');go('events',['id'=>$id]);
  }
  if($a==='apply_event'||$a==='edit_application'){
-  $u=requireLogin();$title=req('title',190);$description=req('description',5000);$tag=req('category_tag',80);
+  $u=requireLogin();$title=req('title',190);$description=req('description',5000);
   $venue=positive('preferred_venue_id');$start=at('preferred_start');$end=at('preferred_end');validatePeriod($start,$end);
   $staff=eventStaffingPlan($_POST);$contact=req('contact_phone',40);$attendance=positive('expected_attendance',100000);
   $v=one("SELECT id,capacity FROM venues WHERE id=? AND status='active'",[$venue]);must((bool)$v && $attendance<=(int)$v['capacity'],'Requested attendance exceeds preferred venue physical capacity.');
+  tx(function()use($a,$u,$title,$description,$contact,$attendance,$venue,$start,$end,$staff){
   if($a==='apply_event'){
+   $tag=eventCategoryPostedTag();
    q('INSERT INTO event_applications(applicant_id,title,description,category_tag,contact_phone,expected_attendance,preferred_venue_id,preferred_start,preferred_end,staffing_plan,remarks) VALUES(?,?,?,?,?,?,?,?,?,?,?)',[$u['id'],$title,$description,$tag,$contact,$attendance,$venue,$start,$end,$staff,optional('remarks',1000)]);
    audit('application_create','event_applications',(int)db()->lastInsertId());
   }else{
-   $id=positive('id');$app=one('SELECT * FROM event_applications WHERE id=?',[$id]);must((bool)$app&&(int)$app['applicant_id']===(int)$u['id']&&in_array($app['status'],['pending','revision'],true),'Application cannot be changed at this stage.');
+   $id=positive('id');$app=one('SELECT * FROM event_applications WHERE id=? FOR UPDATE',[$id]);must((bool)$app&&(int)$app['applicant_id']===(int)$u['id']&&in_array($app['status'],['pending','revision'],true),'Application cannot be changed at this stage.');
+   $tag=eventCategoryPostedTag($app['category_tag']);
    q("UPDATE event_applications SET title=?,description=?,category_tag=?,contact_phone=?,expected_attendance=?,preferred_venue_id=?,preferred_start=?,preferred_end=?,staffing_plan=?,remarks=?,status='pending' WHERE id=?",[$title,$description,$tag,$contact,$attendance,$venue,$start,$end,$staff,optional('remarks',1000),$id]);audit('application_update','event_applications',$id);
   }
+  });
   message('Application submitted. Venue is not reserved until Admin approval.');go('events');
  }
  if($a==='withdraw_application'){
@@ -32,9 +36,10 @@ function eventHandle(): void {
   tx(function()use($id,$state){
    $app=one('SELECT * FROM event_applications WHERE id=? FOR UPDATE',[$id]);must((bool)$app&&in_array($app['status'],['pending','under_review','revision'],true),'Application is already closed.');
    if($state==='approved'){
+    $tag=eventCategoryApprovalTag($app['category_tag']);
     $v=one('SELECT * FROM venues WHERE id=?',[$app['preferred_venue_id']]);must((bool)$v && $v['status']==='active' && (int)$v['capacity']>=(int)$app['expected_attendance'],'Unavailable or undersized venue.');
     lockVenue((int)$v['id']);must(venueFree((int)$v['id'],$app['preferred_start'],$app['preferred_end']),'Venue timeslot conflict.');
-    q('INSERT INTO events(application_id,organiser_id,venue_id,title,description,category_tag) VALUES(?,?,?,?,?,?)',[$id,$app['applicant_id'],$v['id'],$app['title'],$app['description'],$app['category_tag']]);
+    q('INSERT INTO events(application_id,organiser_id,venue_id,title,description,category_tag) VALUES(?,?,?,?,?,?)',[$id,$app['applicant_id'],$v['id'],$app['title'],$app['description'],$tag]);
     $eid=(int)db()->lastInsertId();
     q("INSERT INTO event_organisers(event_id,user_id,primary_contact) VALUES(?,?,1)",[$eid,$app['applicant_id']]);
     q("INSERT IGNORE INTO user_roles(user_id,role) VALUES(?,'organiser')",[$app['applicant_id']]);
@@ -46,14 +51,16 @@ function eventHandle(): void {
   });message('Application reviewed.');go('events');
  }
  if($a==='event_update'){
-  $eid=positive('id');must(eventAllowed($eid,'operate'),'Event scope restricted.');$title=req('title',190);$descr=req('description',5000);$tag=req('category_tag',80);
-  $e=one('SELECT * FROM events WHERE id=?',[$eid]);must((bool)$e && !in_array($e['status'],['cancelled','archived'],true),'Event cannot be changed.');
+  $eid=positive('id');must(eventAllowed($eid,'operate'),'Event scope restricted.');$title=req('title',190);$descr=req('description',5000);
+  tx(function()use($eid,$title,$descr){
+  $e=one('SELECT * FROM events WHERE id=? FOR UPDATE',[$eid]);must((bool)$e && !in_array($e['status'],['cancelled','archived'],true),'Event cannot be changed.');
+  $tag=eventCategoryPostedTag($e['category_tag']);
   if(isAdmin()){
    $max=positive('max_per_order',100);$hold=positive('hold_minutes',60);$postponeWindow=positive('postpone_window_days',90);$fee=myr(cents(req('fee_per_ticket')));
    $from=at('sales_start');$to=at('sales_end');validatePeriod($from,$to);
    q('UPDATE events SET title=?,description=?,category_tag=?,max_per_order=?,hold_minutes=?,fee_per_ticket=?,sales_start=?,sales_end=?,transfers_enabled=?,postpone_window_days=? WHERE id=?',[$title,$descr,$tag,$max,$hold,$fee,$from,$to,isset($_POST['transfers_enabled'])?1:0,$postponeWindow,$eid]);
   }else q('UPDATE events SET title=?,description=?,category_tag=? WHERE id=?',[$title,$descr,$tag,$eid]);
-  audit('event_update','events',$eid);message('Event updated.');go('events',['id'=>$eid]);
+  audit('event_update','events',$eid);});message('Event updated.');go('events',['id'=>$eid]);
  }
  if($a==='event_state'){
   requireRole('admin');$eid=positive('id');$new=req('status');$e=one('SELECT * FROM events WHERE id=?',[$eid]);must((bool)$e,'Unknown event');
@@ -117,7 +124,7 @@ function publicEventsView(): void {
 function eventView(): void {
  $u=requireLogin();$admin=isAdmin();$organiser=hasRole('organiser');$id=(int)($_GET['id']??0);
  if($id){$e=one('SELECT e.*,v.name venue_name FROM events e JOIN venues v ON v.id=e.venue_id WHERE e.id=?',[$id]);must((bool)$e && eventAllowed($id),'Not authorised for this event.');
-  panel('Edit event · '.($admin?'Admin controls':'Organiser details'));startForm('event_update',['id'=>$id]);field('title','Event title','text',$e['title']);area('description','Description',$e['description']);field('category_tag','Event category (tag)','text',$e['category_tag']);
+  panel('Edit event · '.($admin?'Admin controls':'Organiser details'));startForm('event_update',['id'=>$id]);field('title','Event title','text',$e['title']);area('description','Description',$e['description']);eventCategorySelect($e['category_tag']);
   if($admin){field('sales_start','Ticket sale begins','datetime-local',datetimeInput($e['sales_start']));field('sales_end','Ticket sale ends','datetime-local',datetimeInput($e['sales_end']));field('max_per_order','Max tickets per order','number',$e['max_per_order']);field('hold_minutes','Checkout hold (minutes)','number',$e['hold_minutes']);field('postpone_window_days','Special refund window after postponement (days)','number',$e['postpone_window_days']);field('fee_per_ticket','Fee per ticket (MYR)','number',$e['fee_per_ticket'],'min="0" step="0.01"');echo '<label class="mb-3"><input type="checkbox" name="transfers_enabled" '.($e['transfers_enabled']?'checked':'').'> Allow formal ticket transfer</label><br>';}
   endForm('Save changes');endPanel();
   if($admin){panel('Event lifecycle');echo '<p>Current status: '.b($e['status']).'. Publishing requires sessions, categories and sale dates.</p>';foreach(['published','ongoing','completed','postponed','cancelled','archived'] as $s)echo postButton('event_state',ucfirst($s),'btn btn-sm btn-outline-secondary me-2',['id'=>$id,'status'=>$s]);endPanel();}
@@ -136,7 +143,7 @@ function eventView(): void {
  if(!$admin && !isset($_GET['id'])){
   $editing=isset($_GET['application_id'])?one('SELECT * FROM event_applications WHERE id=? AND applicant_id=?',[(int)$_GET['application_id'],$u['id']]):null;
    panel($editing?'Revise event proposal':'Submit event application');startForm($editing?'edit_application':'apply_event',$editing?['id'=>$editing['id']]:[]);
-   field('title','Proposed event title','text',$editing['title']??'');area('description','Event description',$editing['description']??'');field('category_tag','Category tag','text',$editing['category_tag']??'Music');
+   field('title','Proposed event title','text',$editing['title']??'');area('description','Event description',$editing['description']??'');eventCategorySelect($editing['category_tag']??null);
    echo '<p class="small text-muted">Contact email: <strong>'.e($u['email']).'</strong> (from your signed-in account). You do not need to enter it again.</p>';
    field('contact_phone','Contact phone','text',$editing['contact_phone']??$u['phone']);field('expected_attendance','Expected attendance','number',$editing['expected_attendance']??100,'min="1" max="100000"');
    $vs=all("SELECT id,name,capacity,level_no,facilities FROM venues WHERE status='active' ORDER BY level_no,name");

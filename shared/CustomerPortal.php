@@ -42,7 +42,10 @@ function customerPortalView(string $page): void {
 }
 /** Only SICC published events with a future scheduled session are discoverable. */
 function customerVisibleEvents(): array {
-    return all("SELECT e.id,e.title,e.description,e.category_tag,e.venue_id,v.name AS venue_name,v.level_no AS venue_level,
+    $catalog=eventCategoryReady();
+    $tag=$catalog?"COALESCE(ec.name,e.category_tag) AS category_tag, ec.id AS event_category_id, ec.icon AS event_category_icon, ec.image_mime AS event_category_image":"e.category_tag";
+    $join=$catalog?" LEFT JOIN event_categories ec ON ".eventCategoryMatch("e.category_tag")."=ec.name":"";
+    return all("SELECT e.id,e.title,e.description,$tag,e.venue_id,v.name AS venue_name,v.level_no AS venue_level,
        (SELECT MIN(s.start_at) FROM event_sessions s WHERE s.event_id=e.id AND s.status='scheduled' AND s.start_at>NOW()) AS next_session,
        (SELECT MIN(c.price) FROM ticket_categories c JOIN event_sessions s ON s.id=c.session_id
          WHERE s.event_id=e.id AND s.status='scheduled' AND s.start_at>NOW() AND c.status='active' AND c.type!='complimentary') AS starting_price,
@@ -50,7 +53,7 @@ function customerVisibleEvents(): array {
          WHERE s.event_id=e.id AND s.status='scheduled' AND s.start_at>NOW() AND c.status='active' AND c.type!='complimentary') AS highest_price,
        (SELECT GROUP_CONCAT(DISTINCT c.name ORDER BY c.name SEPARATOR ', ') FROM ticket_categories c JOIN event_sessions s ON s.id=c.session_id
          WHERE s.event_id=e.id AND s.status='scheduled' AND s.start_at>NOW() AND c.status='active' AND c.type!='complimentary') AS category_names
-       FROM events e JOIN venues v ON v.id=e.venue_id
+       FROM events e JOIN venues v ON v.id=e.venue_id$join
        WHERE e.status='published' AND (e.visible_before_sales=1 OR e.sales_start<=NOW())
          AND EXISTS (SELECT 1 FROM event_sessions s WHERE s.event_id=e.id AND s.status='scheduled' AND s.start_at>NOW())
        ORDER BY next_session ASC, e.id DESC LIMIT 200");
@@ -70,7 +73,12 @@ function customerEventCard(array $ev, bool $isSaved=false): void {
     else $price=money($min);
     $catList=trim((string)($ev['category_names']??''));
     $venueLabel=(string)$ev['venue_name'].' · '.tr('Level').' '.(int)($ev['venue_level']??0);
-    echo '<article class="customer-event-card"><div class="customer-event-cover"><span class="customer-event-tag">'.e($ev['category_tag']).'</span><span class="customer-cover-mark" aria-hidden="true">SICC</span><span class="customer-cover-lines" aria-hidden="true"></span></div>';
+    $categoryVisual='';
+    if(!empty($ev['event_category_id'])){
+        if(!empty($ev['event_category_image']))$categoryVisual='<img src="'.e(url('event_category_image',['id'=>(int)$ev['event_category_id']])).'" width="24" height="24" class="rounded object-fit-cover me-1" alt="" loading="lazy">';
+        $categoryVisual.='<span aria-hidden="true">'.e(eventCategoryIcon((string)($ev['event_category_icon']??'tag'))).' </span>';
+    }
+    echo '<article class="customer-event-card"><div class="customer-event-cover"><span class="customer-event-tag">'.$categoryVisual.e($ev['category_tag']).'</span><span class="customer-cover-mark" aria-hidden="true">SICC</span><span class="customer-cover-lines" aria-hidden="true"></span></div>';
     echo '<div class="customer-event-content"><p class="customer-event-date">'.e($date).' <span class="event-date-dot"></span> '.e($time).' MYT</p><h3><a class="customer-event-title-link" href="'.e(url('event_details',['event_id'=>$ev['id']])).'">'.e($title).'</a></h3><p class="customer-event-desc">'.e(mbSafe($description,135)).'</p>';
     echo '<p class="customer-event-venue"><span aria-hidden="true">⌖</span> '.e($venueLabel).' · SICC</p>';
     echo '<div class="customer-event-categories"><strong>'.e(tr('Ticket categories')).'</strong><span>'.e($catList!==''?$catList:tr('Ticket options coming soon')).'</span></div>';

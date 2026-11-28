@@ -57,7 +57,7 @@ function layoutTop(string $title): void {
  echo '<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">';
  $cssPath = dirname(__DIR__) . '/assets/style.css';
  $cssVersion = is_file($cssPath) ? (string)filemtime($cssPath) : '1';
- echo '<link href="assets/bootstrap.min.css" rel="stylesheet"><link href="assets/style.css?v='.e($cssVersion).'" rel="stylesheet"></head><body>';
+ echo '<link href="assets/bootstrap.min.css" rel="stylesheet"><link href="assets/style.css?v='.e($cssVersion).'" rel="stylesheet">'.($page==='event_category'?'<link href="assets/event-category.css" rel="stylesheet">':'').'</head><body>';
  echo '<a class="skip-link" href="#main-content">Skip to main content</a>';
  echo '<header class="site-header"><nav class="navbar navbar-expand-xl navbar-dark"><div class="container-xl nav-shell">';
  echo '<a class="navbar-brand brand-lockup" href="'.e(url('home')).'" aria-label="Tickets4You homepage"><span class="brand-monogram">T4Y<span class="brand-dot">.</span></span><span class="brand-divider"></span><span class="brand-subtitle">TICKETS4YOU<small>SICC EVENTS</small></span></a>';
@@ -92,10 +92,12 @@ function layoutTop(string $title): void {
  if(!$customerShell){echo topNavLink('home','Explore events',$page);echo topNavLink('floor','Floor directory',$page);}
  if($u){if(!$customerShell){echo topNavLink('dashboard','Dashboard',$page);echo navDropdown('My space',['booking'=>'Bookings','support'=>'Support','notifications'=>'Notices','rewards'=>'Rewards','account'=>'Account'],$page,'spaceNavigation');}
   if(isAdmin()||(! $customerShell && hasRole('organiser'))){
-   $manage=['events'=>'Event Admin','venue'=>'Venues','session'=>'Sessions','category'=>'Categories'];
+   $manage=['events'=>'Event Admin','venue'=>'Venues','session'=>'Sessions','category'=>'Ticket categories'];
+   if(eventCategoryAccess($u))$manage+=['event_category'=>'Event categories'];
    if(isAdmin())$manage+=['uam'=>'Users','schedule'=>'Scheduling','policy'=>'Refund Policy','report'=>'Reports'];
    echo navDropdown('Management',$manage,$page,'managementNavigation');
   }
+  if(!isAdmin()&&($customerShell||!hasRole('organiser'))&&eventCategoryAccess($u))echo topNavLink('event_category','Event categories',$page);
   if(hasRole('staff')||isAdmin())echo topNavLink('checkin','Check-in',$page);
  }else echo '<a class="nav-link d-sm-none" href="'.e(url('login')).'">'.e(tr('Sign in')).'</a><a class="nav-link" href="'.e(url('register')).'">'.e(tr('Get started')).'</a>';
  echo '</div></div></div></nav></header>';
